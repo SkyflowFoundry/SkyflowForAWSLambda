@@ -225,6 +225,10 @@ curl -X POST $API_URL \
 
 ### Detokenize
 
+**Governance-Controlled Detokenization (Recommended):**
+
+Omit `redactionType` to let Skyflow's governance engine determine the appropriate redaction based on your vault policies:
+
 ```bash
 curl -X POST $API_URL \
   -H "Content-Type: application/json" \
@@ -252,6 +256,31 @@ curl -X POST $API_URL \
   ]
 }
 ```
+
+**Override Redaction (Optional):**
+
+You can explicitly specify a redaction type to override governance policies:
+
+```bash
+curl -X POST $API_URL \
+  -H "Content-Type: application/json" \
+  -H "X-Operation: detokenize" \
+  -d '{
+    "cluster_id": "ebfc9bee4242",
+    "vault_id": "ac7f4217c9e54fa7a6f4896c34f6964b",
+    "tokens": ["tok_abc123xyz"],
+    "options": {
+      "redactionType": "MASKED"
+    }
+  }'
+```
+
+**Redaction Types:**
+- **Omit `redactionType`** (recommended) - Skyflow governance engine decides based on vault policies
+- `PLAIN_TEXT` - Returns unmasked data: `john@example.com`
+- `MASKED` - Returns masked data: `j***@example.com`
+- `REDACTED` - Returns fully redacted: `***`
+- `DEFAULT` - Uses vault's default redaction setting
 
 ### Query
 
@@ -332,12 +361,45 @@ def tokenize(cluster_id, vault_id, table, records):
     )
     return response.json()["data"]
 
+def detokenize(cluster_id, vault_id, tokens, redaction_type=None):
+    payload = {
+        "cluster_id": cluster_id,
+        "vault_id": vault_id,
+        "tokens": tokens
+    }
+
+    # Only include options if redaction_type is specified
+    if redaction_type:
+        payload["options"] = {"redactionType": redaction_type}
+
+    response = requests.post(
+        API_URL,
+        headers={"X-Operation": "detokenize"},
+        json=payload
+    )
+    return response.json()["data"]
+
 # Usage
 tokens = tokenize(
     "ebfc9bee4242",
     "ac7f4217c9e54fa7a6f4896c34f6964b",
     "users",
     [{"email": "john@example.com"}]
+)
+
+# Governance-controlled detokenization (recommended)
+values = detokenize(
+    "ebfc9bee4242",
+    "ac7f4217c9e54fa7a6f4896c34f6964b",
+    ["tok_abc123xyz"]
+)
+
+# Or explicitly specify masking
+masked_values = detokenize(
+    "ebfc9bee4242",
+    "ac7f4217c9e54fa7a6f4896c34f6964b",
+    ["tok_abc123xyz"],
+    redaction_type="MASKED"
 )
 ```
 
@@ -361,12 +423,46 @@ async function tokenize(clusterId, vaultId, table, records) {
   return response.data.data;
 }
 
+async function detokenize(clusterId, vaultId, tokens, redactionType = null) {
+  const payload = {
+    cluster_id: clusterId,
+    vault_id: vaultId,
+    tokens: tokens
+  };
+
+  // Only include options if redactionType is specified
+  if (redactionType) {
+    payload.options = { redactionType: redactionType };
+  }
+
+  const response = await axios.post(API_URL, payload, {
+    headers: { 'X-Operation': 'detokenize' }
+  });
+
+  return response.data.data;
+}
+
 // Usage
 const tokens = await tokenize(
   'ebfc9bee4242',
   'ac7f4217c9e54fa7a6f4896c34f6964b',
   'users',
   [{ email: 'john@example.com' }]
+);
+
+// Governance-controlled detokenization (recommended)
+const values = await detokenize(
+  'ebfc9bee4242',
+  'ac7f4217c9e54fa7a6f4896c34f6964b',
+  ['tok_abc123xyz']
+);
+
+// Or explicitly specify masking
+const maskedValues = await detokenize(
+  'ebfc9bee4242',
+  'ac7f4217c9e54fa7a6f4896c34f6964b',
+  ['tok_abc123xyz'],
+  'MASKED'
 );
 ```
 

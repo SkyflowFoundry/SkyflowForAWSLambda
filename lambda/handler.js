@@ -7,6 +7,7 @@
 
 const SkyflowClient = require('./skyflow-client');
 const config = require('./config');
+const { SkyflowError } = require('skyflow-node');
 
 // Singleton client instance (reused across warm invocations)
 let skyflowClient;
@@ -68,7 +69,8 @@ exports.handler = async (event, context) => {
                 result = await skyflowClient.detokenize(
                     body.cluster_id,
                     body.vault_id,
-                    body.tokens
+                    body.tokens,
+                    body.options || {}
                 );
                 break;
 
@@ -98,40 +100,80 @@ exports.handler = async (event, context) => {
         const elapsed = Date.now() - startTime;
         console.log(`Operation completed in ${elapsed}ms`);
 
+        // Include errors array for partial failure visibility
+        const response = {
+            success: true,
+            data: result.data,
+            metadata: {
+                operation: operation,
+                duration_ms: elapsed
+            }
+        };
+
+        // Include errors if present (partial failures with continueOnError)
+        if (result.errors && result.errors.length > 0) {
+            response.errors = result.errors;
+            console.warn(`Operation completed with ${result.errors.length} partial failures`);
+        }
+
         return {
             statusCode: 200,
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
             },
-            body: JSON.stringify({
-                success: true,
-                data: result,
-                metadata: {
-                    operation: operation,
-                    duration_ms: elapsed
-                }
-            })
+            body: JSON.stringify(response)
         };
 
     } catch (error) {
-        console.error('Error:', error);
-        console.error('Stack:', error.stack);
+        // Comprehensive error handling with Skyflow-specific details
+        if (error instanceof SkyflowError) {
+            console.error('Skyflow API Error:', {
+                http_code: error.error?.http_code,
+                grpc_code: error.error?.grpc_code,
+                message: error.message,
+                details: error.error?.details,
+                request_ID: error.error?.request_ID  // Useful for support tickets
+            });
 
-        return {
-            statusCode: error.statusCode || 500,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            body: JSON.stringify({
-                success: false,
-                error: {
-                    message: error.message,
-                    type: error.name
-                }
-            })
-        };
+            return {
+                statusCode: error.error?.http_code || 500,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                body: JSON.stringify({
+                    success: false,
+                    error: {
+                        message: error.message,
+                        type: 'SkyflowError',
+                        http_code: error.error?.http_code,
+                        grpc_code: error.error?.grpc_code,
+                        details: error.error?.details,
+                        request_ID: error.error?.request_ID
+                    }
+                })
+            };
+        } else {
+            // Non-Skyflow errors (validation, parsing, etc.)
+            console.error('Application Error:', error);
+            console.error('Stack:', error.stack);
+
+            return {
+                statusCode: error.statusCode || 500,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                body: JSON.stringify({
+                    success: false,
+                    error: {
+                        message: error.message,
+                        type: error.name || 'Error'
+                    }
+                })
+            };
+        }
     }
 };
 
@@ -162,6 +204,14 @@ function validateDetokenizeRequest(body) {
     }
     if (body.tokens.length === 0) {
         throw new Error('tokens array cannot be empty');
+    }
+
+    // Validate redactionType if provided (optional - if omitted, Skyflow governance decides)
+    if (body.options && body.options.redactionType) {
+        const validRedactionTypes = ['PLAIN_TEXT', 'MASKED', 'REDACTED', 'DEFAULT'];
+        if (!validRedactionTypes.includes(body.options.redactionType)) {
+            throw new Error(`Invalid redactionType: ${body.options.redactionType}. Must be one of: ${validRedactionTypes.join(', ')}, or omit for governance-controlled redaction`);
+        }
     }
 }
 

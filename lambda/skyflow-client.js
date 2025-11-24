@@ -5,7 +5,7 @@
  * No custom preprocessing or transformations - direct pass-through to SDK
  */
 
-const { Skyflow, InsertRequest, InsertOptions, DetokenizeRequest, DetokenizeOptions, QueryRequest, TokenMode } = require('skyflow-node');
+const { Skyflow, InsertRequest, InsertOptions, DetokenizeRequest, DetokenizeOptions, QueryRequest, TokenMode, RedactionType, LogLevel, SkyflowError } = require('skyflow-node');
 
 class SkyflowClient {
     /**
@@ -54,7 +54,8 @@ class SkyflowClient {
             };
 
             const skyflowConfig = {
-                vaultConfigs: [vaultConfig]
+                vaultConfigs: [vaultConfig],
+                logLevel: LogLevel.ERROR  // Recommended for production
             };
 
             this.clients[clientKey] = new Skyflow(skyflowConfig);
@@ -73,7 +74,10 @@ class SkyflowClient {
      * @param {string} table - Table name in vault
      * @param {Array} records - Array of record objects with column names as keys
      *                          Example: [{email: "test@example.com", name: "John Doe"}]
-     * @param {Object} options - Options like {upsert: "email"} or {upsert: ["email", "ssn"]}
+     * @param {Object} options - Options object supporting:
+     *                          - {upsert: "email"} - Upsert by single column (recommended)
+     *                          - {upsert: ["email"]} - Array format (only first column used, SDK limitation)
+     *                          Note: SDK only supports single-column upsert
      * @returns {Promise<Array>} Array of tokenized records with all columns
      */
     async tokenize(clusterId, vaultId, table, records, options = {}) {
@@ -99,9 +103,24 @@ class SkyflowClient {
         try {
             const response = await client.vault(vaultId).insert(insertRequest, insertOptions);
             console.log(`Tokenize complete: ${response.insertedFields?.length || 0} records processed`);
-            return response.insertedFields || [];
+
+            // Return both data and errors for partial failure handling
+            return {
+                data: response.insertedFields || [],
+                errors: response.errors || null
+            };
         } catch (error) {
-            console.error('Tokenize error:', error.message);
+            if (error instanceof SkyflowError) {
+                console.error('Tokenize error (Skyflow):', {
+                    http_code: error.error?.http_code,
+                    grpc_code: error.error?.grpc_code,
+                    message: error.message,
+                    details: error.error?.details,
+                    request_ID: error.error?.request_ID
+                });
+            } else {
+                console.error('Tokenize error (Unexpected):', error.message);
+            }
             throw new Error(`Tokenization failed: ${error.message}`);
         }
     }
@@ -112,17 +131,31 @@ class SkyflowClient {
      * @param {string} clusterId - Skyflow cluster ID
      * @param {string} vaultId - Skyflow vault ID
      * @param {Array} tokens - Array of token strings
-     * @returns {Promise<Array>} Array of detokenized values
+     * @param {Object} options - Options object supporting:
+     *                          - {redactionType: "PLAIN_TEXT"} - Returns unmasked data
+     *                          - {redactionType: "MASKED"} - Returns masked data
+     *                          - {redactionType: "REDACTED"} - Returns redacted data
+     *                          - {redactionType: "DEFAULT"} - Uses default redaction
+     *                          - Omit redactionType to let Skyflow's governance engine decide
+     * @returns {Promise<Object>} Object with data array and errors array
      */
-    async detokenize(clusterId, vaultId, tokens) {
-        console.log(`Detokenize: cluster=${clusterId}, vault=${vaultId}, count=${tokens.length}`);
+    async detokenize(clusterId, vaultId, tokens, options = {}) {
+        const redactionType = options.redactionType;
+        console.log(`Detokenize: cluster=${clusterId}, vault=${vaultId}, count=${tokens.length}, redactionType=${redactionType || 'governance-controlled'}`);
 
         const client = this._getClient(clusterId, vaultId);
 
-        const detokenizeData = tokens.map(token => ({
-            token: token,
-            redaction: 'PLAIN_TEXT'
-        }));
+        // Only set redactionType if explicitly provided, otherwise let Skyflow governance decide
+        const detokenizeData = tokens.map(token => {
+            const data = { token: token };
+
+            if (redactionType) {
+                // Map string to enum
+                data.redactionType = RedactionType[redactionType] || RedactionType.PLAIN_TEXT;
+            }
+
+            return data;
+        });
 
         const detokenizeRequest = new DetokenizeRequest(detokenizeData);
         const detokenizeOptions = new DetokenizeOptions();
@@ -132,12 +165,26 @@ class SkyflowClient {
             const response = await client.vault(vaultId).detokenize(detokenizeRequest, detokenizeOptions);
             console.log(`Detokenize complete: ${response.detokenizedFields?.length || 0} records processed`);
 
-            return (response.detokenizedFields || []).map(record => ({
-                token: record.token,
-                value: record.value
-            }));
+            // Return both data and errors for partial failure handling
+            return {
+                data: (response.detokenizedFields || []).map(record => ({
+                    token: record.token,
+                    value: record.value
+                })),
+                errors: response.errors || null
+            };
         } catch (error) {
-            console.error('Detokenize error:', error.message);
+            if (error instanceof SkyflowError) {
+                console.error('Detokenize error (Skyflow):', {
+                    http_code: error.error?.http_code,
+                    grpc_code: error.error?.grpc_code,
+                    message: error.message,
+                    details: error.error?.details,
+                    request_ID: error.error?.request_ID
+                });
+            } else {
+                console.error('Detokenize error (Unexpected):', error.message);
+            }
             throw new Error(`Detokenization failed: ${error.message}`);
         }
     }
@@ -166,9 +213,23 @@ class SkyflowClient {
                 return cleanRecord;
             });
 
-            return cleanedResults;
+            // Return both data and errors for partial failure handling
+            return {
+                data: cleanedResults,
+                errors: response.errors || null
+            };
         } catch (error) {
-            console.error('Query error:', error.message);
+            if (error instanceof SkyflowError) {
+                console.error('Query error (Skyflow):', {
+                    http_code: error.error?.http_code,
+                    grpc_code: error.error?.grpc_code,
+                    message: error.message,
+                    details: error.error?.details,
+                    request_ID: error.error?.request_ID
+                });
+            } else {
+                console.error('Query error (Unexpected):', error.message);
+            }
             throw new Error(`Query failed: ${error.message}`);
         }
     }
@@ -201,9 +262,24 @@ class SkyflowClient {
         try {
             const response = await client.vault(vaultId).insert(insertRequest, insertOptions);
             console.log(`Tokenize-BYOT complete: ${response.insertedFields?.length || 0} records processed`);
-            return response.insertedFields || [];
+
+            // Return both data and errors for partial failure handling
+            return {
+                data: response.insertedFields || [],
+                errors: response.errors || null
+            };
         } catch (error) {
-            console.error('Tokenize-BYOT error:', error.message);
+            if (error instanceof SkyflowError) {
+                console.error('Tokenize-BYOT error (Skyflow):', {
+                    http_code: error.error?.http_code,
+                    grpc_code: error.error?.grpc_code,
+                    message: error.message,
+                    details: error.error?.details,
+                    request_ID: error.error?.request_ID
+                });
+            } else {
+                console.error('Tokenize-BYOT error (Unexpected):', error.message);
+            }
             throw new Error(`Tokenize-BYOT failed: ${error.message}`);
         }
     }

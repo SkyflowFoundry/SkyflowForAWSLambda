@@ -206,6 +206,16 @@ All operations require both `cluster_id` and `vault_id` in the request body. The
 ### Detokenization is Vault-Level
 Unlike tokenization, detokenization does not require `table` or `column` fields. Tokens are vault-level identifiers.
 
+### Detokenization Redaction Control
+Detokenization supports optional `redactionType` in the `options` object:
+- **Omit `redactionType`** (recommended) - Skyflow's governance engine determines redaction based on vault policies
+- `PLAIN_TEXT` - Returns unmasked data
+- `MASKED` - Returns masked data (e.g., `j***@example.com`)
+- `REDACTED` - Returns fully redacted data (`***`)
+- `DEFAULT` - Uses vault's default redaction setting
+
+The implementation in `skyflow-client.js:149-158` only includes the `redactionType` field if explicitly provided, allowing Skyflow's governance to control access when omitted.
+
 ### Query Limitations
 - Maximum 25 records per query (Skyflow limitation)
 - SELECT statements only
