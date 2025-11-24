@@ -548,7 +548,36 @@ else
     echo "Route already exists"
 fi
 
+# Create Snowflake external function route
+echo "Creating Snowflake route..."
+
+# /processSnowflake route (single endpoint, operation determined by header)
+SF_ROUTE_ID=$(aws apigatewayv2 get-routes --region "$REGION" --api-id "$API_ID" --query "Items[?RouteKey=='POST /processSnowflake'].RouteId" --output text)
+
+if [ -z "$SF_ROUTE_ID" ]; then
+    SF_INTEGRATION_ID=$(aws apigatewayv2 create-integration \
+        --region "$REGION" \
+        --api-id "$API_ID" \
+        --integration-type AWS_PROXY \
+        --integration-uri "$LAMBDA_ARN" \
+        --payload-format-version 2.0 \
+        --query 'IntegrationId' \
+        --output text)
+
+    aws apigatewayv2 create-route \
+        --region "$REGION" \
+        --api-id "$API_ID" \
+        --route-key "POST /processSnowflake" \
+        --target "integrations/${SF_INTEGRATION_ID}" \
+        --output text > /dev/null
+
+    echo "✓ Snowflake route created"
+else
+    echo "Snowflake route already exists"
+fi
+
 API_URL="https://${API_ID}.execute-api.${REGION}.amazonaws.com/process"
+SF_API_URL="https://${API_ID}.execute-api.${REGION}.amazonaws.com/processSnowflake"
 
 echo -e "${GREEN}✓ API Gateway configured${NC}"
 echo ""
@@ -564,14 +593,13 @@ echo ""
 echo -e "${GREEN}API Gateway URL:${NC}"
 echo -e "  ${API_URL}"
 echo ""
-echo -e "${GREEN}Single Endpoint:${NC}"
+echo -e "${GREEN}Standard Endpoint:${NC}"
 echo -e "  POST ${API_URL}"
+echo -e "  Operations (via X-Operation header): tokenize, detokenize, query, tokenize-byot"
 echo ""
-echo -e "${GREEN}Operations (via X-Operation header):${NC}"
-echo -e "  - tokenize"
-echo -e "  - detokenize"
-echo -e "  - query"
-echo -e "  - tokenize-byot"
+echo -e "${GREEN}Snowflake Endpoints:${NC}"
+echo -e "  POST ${SF_API_URL}/tokenize"
+echo -e "  POST ${SF_API_URL}/detokenize"
 echo ""
 echo -e "${YELLOW}Test Examples:${NC}"
 echo ""
@@ -610,6 +638,33 @@ echo -e "  curl -X POST ${API_URL} \\\\"
 echo -e "    -H 'Content-Type: application/json' \\\\"
 echo -e "    -H 'X-Operation: tokenize-byot' \\\\"
 echo -e "    -d '{\"cluster_id\":\"your-cluster-id\",\"vault_id\":\"your-vault-id\",\"table\":\"users\",\"records\":[{\"fields\":{\"email\":\"test@example.com\"},\"tokens\":{\"email\":\"my-custom-token-123\"}}]}'"
+echo ""
+echo -e "${BLUE}============================================================================${NC}"
+echo -e "${BLUE}Snowflake External Function Examples${NC}"
+echo -e "${BLUE}============================================================================${NC}"
+echo ""
+echo -e "${GREEN}7. Snowflake Tokenize (emulates Snowflake request):${NC}"
+echo -e "  curl -X POST ${SF_API_URL} \\\\"
+echo -e "    -H 'Content-Type: application/json' \\\\"
+echo -e "    -H 'sf-custom-operation: tokenize' \\\\"
+echo -e "    -H 'sf-custom-cluster-id: your-cluster-id' \\\\"
+echo -e "    -H 'sf-custom-vault-id: your-vault-id' \\\\"
+echo -e "    -H 'sf-custom-table: users' \\\\"
+echo -e "    -H 'sf-custom-column-name: email' \\\\"
+echo -e "    -H 'sf-external-function-query-batch-id: test-batch-001' \\\\"
+echo -e "    -d '{\"data\":[[0,\"john@example.com\"],[1,\"jane@example.com\"]]}'"
+echo ""
+echo -e "${GREEN}8. Snowflake Detokenize (emulates Snowflake request):${NC}"
+echo -e "  curl -X POST ${SF_API_URL} \\\\"
+echo -e "    -H 'Content-Type: application/json' \\\\"
+echo -e "    -H 'sf-custom-operation: detokenize' \\\\"
+echo -e "    -H 'sf-custom-cluster-id: your-cluster-id' \\\\"
+echo -e "    -H 'sf-custom-vault-id: your-vault-id' \\\\"
+echo -e "    -H 'sf-external-function-query-batch-id: test-batch-001' \\\\"
+echo -e "    -d '{\"data\":[[0,\"tok_abc123xyz\"],[1,\"tok_def456abc\"]]}'"
+echo ""
+echo -e "${YELLOW}Expected Snowflake response format:${NC}"
+echo -e '  {"data":[[0,"result1"],[1,"result2"]]}'
 echo ""
 echo -e "${YELLOW}To destroy:${NC} ./deploy.sh --destroy --region ${REGION}"
 echo ""

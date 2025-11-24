@@ -3,27 +3,39 @@
  *
  * Generic REST API wrapper for Skyflow SDK operations
  * Supports: tokenize, detokenize, query, BYOT
+ *
+ * Routes:
+ * - /process - Standard REST API operations
+ * - /processSnowflake/* - Snowflake external function format
  */
 
 const SkyflowClient = require('./skyflow-client');
 const config = require('./config');
 const { SkyflowError } = require('skyflow-node');
+const snowflakeHandler = require('./snowflake-handler');
 
 // Singleton client instance (reused across warm invocations)
 let skyflowClient;
 
 /**
  * Main Lambda handler
- * Routes requests to appropriate Skyflow operations
+ * Routes requests to appropriate Skyflow operations or Snowflake handler
  */
 exports.handler = async (event, context) => {
     console.log('Request:', {
         requestId: context.requestId,
         functionName: context.functionName,
+        path: event.path || event.rawPath,
         remainingTimeMs: context.getRemainingTimeInMillis()
     });
 
     try {
+        // Route to Snowflake handler if path matches
+        const path = event.path || event.rawPath || '';
+        if (path.includes('/processSnowflake')) {
+            console.log('Routing to Snowflake handler');
+            return await snowflakeHandler.handler(event, context);
+        }
         // Initialize client on first invocation (singleton pattern)
         if (!skyflowClient) {
             console.log('Initializing Skyflow client...');

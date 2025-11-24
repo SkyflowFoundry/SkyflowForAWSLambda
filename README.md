@@ -339,6 +339,200 @@ curl -X POST $API_URL \
 
 ---
 
+## Snowflake External Functions
+
+This API provides a dedicated endpoint for [Snowflake external functions](https://docs.snowflake.com/en/sql-reference/external-functions-introduction), enabling tokenization and detokenization directly within Snowflake queries.
+
+### Snowflake Format
+
+Snowflake external functions use a specific request/response format:
+
+**Request:**
+```json
+{
+  "data": [
+    [0, "value1"],
+    [1, "value2"]
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "data": [
+    [0, "result1"],
+    [1, "result2"]
+  ]
+}
+```
+
+Row numbers must match exactly between request and response.
+
+### Configuration via Headers
+
+Snowflake passes configuration through custom headers (prefixed with `sf-custom-`):
+
+| Header | Required | Used For | Description |
+|--------|----------|----------|-------------|
+| `sf-custom-operation` | Yes | Both | Operation to perform: "tokenize" or "detokenize" |
+| `sf-custom-cluster-id` | Yes | Both | Your Skyflow cluster ID |
+| `sf-custom-vault-id` | Yes | Both | Your Skyflow vault ID |
+| `sf-custom-table` | Yes | Tokenize only | Table name for storing data |
+| `sf-custom-column-name` | Yes | Tokenize only | Column name in the table (single-column operations only) |
+
+### Setup in Snowflake
+
+#### 1. Create API Integration
+
+```sql
+CREATE OR REPLACE API INTEGRATION skyflow_api_integration
+  API_PROVIDER = aws_api_gateway
+  API_AWS_ROLE_ARN = 'arn:aws:iam::YOUR_ACCOUNT:role/snowflake-api-role'
+  ENABLED = TRUE
+  API_ALLOWED_PREFIXES = ('https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/');
+```
+
+#### 2. Create Tokenize Function
+
+```sql
+CREATE OR REPLACE EXTERNAL FUNCTION skyflow_tokenize(plaintext VARCHAR)
+  RETURNS VARCHAR
+  API_INTEGRATION = skyflow_api_integration
+  HEADERS = (
+    'operation' = 'tokenize',
+    'cluster-id' = 'ebfc9bee4242',
+    'vault-id' = 'ac7f4217c9e54fa7a6f4896c34f6964b',
+    'table' = 'users',
+    'column-name' = 'email'
+  )
+  AS 'https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake';
+```
+
+#### 3. Create Detokenize Function
+
+```sql
+CREATE OR REPLACE EXTERNAL FUNCTION skyflow_detokenize(token VARCHAR)
+  RETURNS VARCHAR
+  API_INTEGRATION = skyflow_api_integration
+  HEADERS = (
+    'operation' = 'detokenize',
+    'cluster-id' = 'ebfc9bee4242',
+    'vault-id' = 'ac7f4217c9e54fa7a6f4896c34f6964b'
+  )
+  AS 'https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake';
+```
+
+### Usage Examples
+
+#### Tokenize Data During Load
+
+```sql
+-- Tokenize email addresses when loading data
+INSERT INTO tokenized_customers (id, email_token, name)
+SELECT
+  id,
+  skyflow_tokenize(email) AS email_token,
+  name
+FROM staging_customers;
+```
+
+#### Detokenize with Masking Policies
+
+```sql
+-- Create masking policy for role-based access
+CREATE OR REPLACE MASKING POLICY email_mask AS (val VARCHAR) RETURNS VARCHAR ->
+  CASE
+    WHEN CURRENT_ROLE() IN ('ADMIN', 'ANALYST') THEN skyflow_detokenize(val)
+    ELSE '***@***.com'
+  END;
+
+-- Apply policy to column
+ALTER TABLE tokenized_customers
+  MODIFY COLUMN email_token
+  SET MASKING POLICY email_mask;
+
+-- Admins see real emails, others see masked
+SELECT id, email_token, name
+FROM tokenized_customers;
+```
+
+#### Query with Selective Detokenization
+
+```sql
+-- Detokenize only for specific users
+SELECT
+  customer_id,
+  CASE
+    WHEN is_vip = TRUE
+    THEN skyflow_detokenize(email_token)
+    ELSE email_token
+  END AS email
+FROM customers
+WHERE created_date > '2024-01-01';
+```
+
+### Test with curl
+
+Emulate a Snowflake request for testing:
+
+**Tokenize:**
+```bash
+curl -X POST https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake \
+  -H "Content-Type: application/json" \
+  -H "sf-custom-operation: tokenize" \
+  -H "sf-custom-cluster-id: ebfc9bee4242" \
+  -H "sf-custom-vault-id: ac7f4217c9e54fa7a6f4896c34f6964b" \
+  -H "sf-custom-table: users" \
+  -H "sf-custom-column-name: email" \
+  -d '{"data":[[0,"john@example.com"],[1,"jane@example.com"]]}'
+```
+
+**Response:**
+```json
+{
+  "data": [
+    [0, "tok_abc123xyz"],
+    [1, "tok_def456abc"]
+  ]
+}
+```
+
+**Detokenize:**
+```bash
+curl -X POST https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake \
+  -H "Content-Type: application/json" \
+  -H "sf-custom-operation: detokenize" \
+  -H "sf-custom-cluster-id: ebfc9bee4242" \
+  -H "sf-custom-vault-id: ac7f4217c9e54fa7a6f4896c34f6964b" \
+  -d '{"data":[[0,"tok_abc123xyz"],[1,"tok_def456abc"]]}'
+```
+
+**Response:**
+```json
+{
+  "data": [
+    [0, "john@example.com"],
+    [1, "jane@example.com"]
+  ]
+}
+```
+
+### Performance Notes
+
+- Snowflake batches rows automatically for efficiency
+- Row order is preserved (guaranteed by both Snowflake and Skyflow)
+- Lambda singleton pattern ensures fast warm starts
+- Typical latency: 50-200ms for batches of 100-1000 rows
+
+### Limitations
+
+- Tokenize requires table name and column name headers
+- Only single-column operations supported per function
+- For multi-column tokenization, create multiple external functions (one per column)
+
+---
+
 ## Client Libraries
 
 ### Python

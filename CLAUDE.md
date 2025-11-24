@@ -12,7 +12,11 @@ This is a generic REST API wrapper for Skyflow SDK operations, deployed as AWS L
 - `query` - Execute SQL queries against vault data
 - `tokenize-byot` - Insert records with custom tokens (Bring Your Own Token)
 
-**Important:** Cluster ID is now provided in each API request payload (not in config), enabling multi-cluster deployments from a single Lambda function.
+**Snowflake External Functions:**
+- `/processSnowflake` - Single endpoint for tokenize and detokenize operations using Snowflake external function format
+  - Operation determined by `sf-custom-operation` header ("tokenize" or "detokenize")
+
+**Important:** Cluster ID is now provided in each API request payload (not in config) for standard operations, or via `sf-custom-cluster-id` header for Snowflake operations, enabling multi-cluster deployments from a single Lambda function.
 
 ## Key Architecture Principles
 
@@ -32,7 +36,25 @@ Configuration is loaded via `config.js` with this priority:
 The deploy script automatically converts `skyflow-config.json` to environment variables during deployment, so credentials are never packaged in the Lambda ZIP file.
 
 ### Request Routing Pattern
-All operations use a single endpoint (`POST /process`). The operation is determined by the `X-Operation` header, which is extracted case-insensitively in `handler.js:38`. This allows for a unified API Gateway configuration while supporting multiple operations.
+**Standard API:** All operations use a single endpoint (`POST /process`). The operation is determined by the `X-Operation` header, which is extracted case-insensitively in `handler.js:38`. This allows for a unified API Gateway configuration while supporting multiple operations.
+
+**Snowflake External Functions:** A dedicated endpoint (`POST /processSnowflake`) handles Snowflake's specific external function format. The operation (tokenize or detokenize) is determined by the `sf-custom-operation` header. The main handler (`handler.js:34-38`) routes requests to `snowflake-handler.js` when the path includes `/processSnowflake`.
+
+### Snowflake Integration Pattern
+The Snowflake handler (`snowflake-handler.js`) implements the external function protocol:
+- **Request Format:** `{"data": [[rowNum, value], [rowNum, value], ...]}`
+- **Response Format:** `{"data": [[rowNum, result], [rowNum, result], ...]}`
+- **Operation Selection:** Determined by `sf-custom-operation` header ("tokenize" or "detokenize")
+- **Configuration:** Extracted from Snowflake custom headers:
+  - `sf-custom-cluster-id` (required for both)
+  - `sf-custom-vault-id` (required for both)
+  - `sf-custom-table` (required for tokenize)
+  - `sf-custom-column-name` (required for tokenize)
+- **Single-Column Limitation:** Each function handles one column only; multi-column tokenization requires multiple external functions
+- **Row Order Preservation:** Skyflow SDK guarantees order is maintained, simplifying the implementation
+- **Batching:** Snowflake automatically batches rows; each batch is processed as a single request
+
+The handler extracts the operation from the header, extracts row numbers and values, calls the appropriate Skyflow operation (using the shared `skyflow-client.js`), and reconstructs the Snowflake response format maintaining row order.
 
 ## Development Commands
 
@@ -115,7 +137,8 @@ Environment variables are automatically set by the deploy script from `skyflow-c
 
 ```
 lambda/
-├── handler.js               # Lambda entry point, request routing, validation
+├── handler.js               # Lambda entry point, routes to standard or Snowflake handler
+├── snowflake-handler.js     # Snowflake external function handler
 ├── skyflow-client.js        # Pure SDK wrapper, client caching
 ├── config.js                # Configuration loader (env vars → file)
 ├── config.example.json      # API Key auth template
@@ -131,10 +154,23 @@ deploy.sh                    # Deployment script (create/update/destroy)
 ### handler.js
 - **Purpose:** Lambda entry point, request routing, input validation
 - **Singleton:** Maintains single `skyflowClient` instance across warm invocations
-- **Routing:** Extracts `X-Operation` header (case-insensitive) and routes to appropriate client method
+- **Path Routing:** Routes to `snowflake-handler` when path contains `/processSnowflake` (line 34-38)
+- **Operation Routing:** Extracts `X-Operation` header (case-insensitive) for standard API
 - **Validation:** Validates both `cluster_id` and `vault_id` are present in every request
 - **Parameter Passing:** Passes `cluster_id` as first parameter to all skyflow-client methods
 - **Response Format:** All responses include `success`, `data`, and `metadata` fields
+
+### snowflake-handler.js
+- **Purpose:** Handles Snowflake external function requests with specific format
+- **Singleton:** Uses shared `skyflowClient` singleton for warm invocations
+- **Header Extraction:** Extracts configuration from `sf-custom-*` headers (case-insensitive)
+- **Operation Selection:** Determines operation from `sf-custom-operation` header ("tokenize" or "detokenize")
+- **Snowflake Metadata:** Logs `sf-external-function-query-batch-id` and `sf-external-function-current-query-id`
+- **Format Conversion:** Converts Snowflake's `[[rowNum, value], ...]` format to/from Skyflow format
+- **Order Preservation:** Relies on Skyflow SDK's guarantee to preserve row order
+- **Operations:** Supports `tokenize` (requires table and column-name headers) and `detokenize` (vault-level)
+- **Single-Column:** Only processes one column per request; validated in `handleTokenize`
+- **Error Handling:** Returns proper Snowflake-compatible error responses
 
 ### skyflow-client.js
 - **Purpose:** Pure wrapper around Skyflow Node SDK
