@@ -29,8 +29,8 @@ Before deploying, ensure you have:
    ```
 4. **Skyflow Account** with:
    - Vault created
-   - Cluster ID (e.g., `ebfc9bee4242`)
-   - Vault ID (e.g., `d8f4d2a3b1c7`)
+   - **Cluster ID** - The prefix of your vault URL (e.g., `ebfc9bee4242` from `https://ebfc9bee4242.vault.skyflowapis.com`)
+   - **Vault ID** - Your vault's unique identifier (e.g., `ac7f4217c9e54fa7a6f4896c34f6964b`)
    - API Key or Service Account credentials
 
 ---
@@ -111,8 +111,8 @@ curl -X POST https://your-api-url.amazonaws.com/process \
   -H "Content-Type: application/json" \
   -H "X-Operation: tokenize" \
   -d '{
-    "cluster_id": "your-cluster-id",
-    "vault_id": "your-vault-id",
+    "cluster_id": "ebfc9bee4242",
+    "vault_id": "ac7f4217c9e54fa7a6f4896c34f6964b",
     "table": "users",
     "records": [{"email": "test@example.com"}]
   }'
@@ -155,7 +155,7 @@ curl -X POST $API_URL \
   -H "X-Operation: tokenize" \
   -d '{
     "cluster_id": "ebfc9bee4242",
-    "vault_id": "d8f4d2a3b1c7",
+    "vault_id": "ac7f4217c9e54fa7a6f4896c34f6964b",
     "table": "users",
     "records": [
       {"email": "john@example.com"},
@@ -193,7 +193,7 @@ curl -X POST $API_URL \
   -H "X-Operation: tokenize" \
   -d '{
     "cluster_id": "ebfc9bee4242",
-    "vault_id": "d8f4d2a3b1c7",
+    "vault_id": "ac7f4217c9e54fa7a6f4896c34f6964b",
     "table": "users",
     "records": [
       {
@@ -231,7 +231,7 @@ curl -X POST $API_URL \
   -H "X-Operation: detokenize" \
   -d '{
     "cluster_id": "ebfc9bee4242",
-    "vault_id": "d8f4d2a3b1c7",
+    "vault_id": "ac7f4217c9e54fa7a6f4896c34f6964b",
     "tokens": ["tok_abc123xyz", "tok_def456abc"]
   }'
 ```
@@ -261,7 +261,7 @@ curl -X POST $API_URL \
   -H "X-Operation: query" \
   -d '{
     "cluster_id": "ebfc9bee4242",
-    "vault_id": "d8f4d2a3b1c7",
+    "vault_id": "ac7f4217c9e54fa7a6f4896c34f6964b",
     "query": "SELECT email, created_at FROM users WHERE created_at > '\''2024-01-01'\'' LIMIT 10"
   }'
 ```
@@ -293,7 +293,7 @@ curl -X POST $API_URL \
   -H "X-Operation: tokenize-byot" \
   -d '{
     "cluster_id": "ebfc9bee4242",
-    "vault_id": "d8f4d2a3b1c7",
+    "vault_id": "ac7f4217c9e54fa7a6f4896c34f6964b",
     "table": "users",
     "records": [
       {
@@ -335,7 +335,7 @@ def tokenize(cluster_id, vault_id, table, records):
 # Usage
 tokens = tokenize(
     "ebfc9bee4242",
-    "d8f4d2a3b1c7",
+    "ac7f4217c9e54fa7a6f4896c34f6964b",
     "users",
     [{"email": "john@example.com"}]
 )
@@ -364,7 +364,7 @@ async function tokenize(clusterId, vaultId, table, records) {
 // Usage
 const tokens = await tokenize(
   'ebfc9bee4242',
-  'd8f4d2a3b1c7',
+  'ac7f4217c9e54fa7a6f4896c34f6964b',
   'users',
   [{ email: 'john@example.com' }]
 );
