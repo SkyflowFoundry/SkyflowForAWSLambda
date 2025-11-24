@@ -1,0 +1,15 @@
+{
+  "credentials": {
+    "apiKey": "sky-your-api-key-here"
+  },
+  "batching": {
+    "tokenize": {
+      "batchSize": 25,
+      "maxConcurrency": 100
+    },
+    "detokenize": {
+      "batchSize": 100,
+      "maxConcurrency": 200
+    }
+  }
+}

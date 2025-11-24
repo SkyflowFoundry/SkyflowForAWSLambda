@@ -1,0 +1,21 @@
+{
+  "name": "skyflow-lambda-api",
+  "version": "1.0.0",
+  "description": "Generic REST API wrapper for Skyflow SDK operations",
+  "main": "handler.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "skyflow",
+    "tokenization",
+    "lambda",
+    "api",
+    "rest"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "skyflow-node": "^2.0.0"
+  }
+}

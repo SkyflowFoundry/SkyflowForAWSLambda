@@ -1,0 +1,51 @@
+# Credentials and sensitive config (DO NOT COMMIT)
+lambda/skyflow-config.json
+lambda/config.json
+.env
+.env.*
+
+# Keep example config files (these should be committed)
+!lambda/config.example.json
+!lambda/config.example-jwt.json
+
+# AWS deployment artifacts
+deployment-info.txt
+lambda-env-vars.json
+env-vars.json
+trust-policy.json
+*.zip
+
+# Node.js
+lambda/node_modules/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build artifacts
+build/
+dist/
+*.tar.gz
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Backup files
+*.bak
+*.backup
+*.tmp

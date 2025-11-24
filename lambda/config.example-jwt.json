@@ -1,0 +1,19 @@
+{
+  "credentials": {
+    "clientID": "your-client-id",
+    "clientName": "your-client-name",
+    "tokenURI": "https://your-cluster.vault.skyflowapis.com/v1/auth/sa/oauth/token",
+    "keyID": "your-key-id",
+    "privateKey": "-----BEGIN RSA PRIVATE KEY-----\nYour private key here\n-----END RSA PRIVATE KEY-----"
+  },
+  "batching": {
+    "tokenize": {
+      "batchSize": 25,
+      "maxConcurrency": 100
+    },
+    "detokenize": {
+      "batchSize": 100,
+      "maxConcurrency": 200
+    }
+  }
+}
