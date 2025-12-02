@@ -40,9 +40,7 @@ exports.handler = async (event, context) => {
     try {
         // Initialize client on first invocation
         if (!skyflowClient) {
-            console.log('Initializing Skyflow client...');
             skyflowClient = new SkyflowClient(config);
-            console.log('Skyflow client initialized');
         }
 
         // Extract headers (case-insensitive)
@@ -56,8 +54,6 @@ exports.handler = async (event, context) => {
         if (!Array.isArray(rows) || rows.length === 0) {
             throw new Error('Invalid request: data array is empty or missing');
         }
-
-        console.log(`Processing ${rows.length} rows`);
 
         // Validate required headers
         if (!requestConfig.clusterId) {
@@ -75,8 +71,6 @@ exports.handler = async (event, context) => {
         if (operation !== 'tokenize' && operation !== 'detokenize') {
             throw new Error(`Invalid operation: ${operation}. Must be "tokenize" or "detokenize"`);
         }
-
-        console.log(`Operation: ${operation}`);
 
         const startTime = Date.now();
         let result;

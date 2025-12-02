@@ -33,8 +33,6 @@ class SkyflowClient {
         const clientKey = `${clusterId}:${vaultId}`;
 
         if (!this.clients[clientKey]) {
-            console.log(`Initializing SDK client for cluster: ${clusterId}, vault: ${vaultId}`);
-
             let credentials;
             if (this.credentials.apiKey) {
                 credentials = {
@@ -59,8 +57,6 @@ class SkyflowClient {
             };
 
             this.clients[clientKey] = new Skyflow(skyflowConfig);
-
-            console.log(`SDK client initialized for cluster: ${clusterId}, vault: ${vaultId}`);
         }
 
         return this.clients[clientKey];
@@ -102,7 +98,6 @@ class SkyflowClient {
 
         try {
             const response = await client.vault(vaultId).insert(insertRequest, insertOptions);
-            console.log(`Tokenize complete: ${response.insertedFields?.length || 0} records processed`);
 
             // Return both data and errors for partial failure handling
             return {
@@ -163,7 +158,6 @@ class SkyflowClient {
 
         try {
             const response = await client.vault(vaultId).detokenize(detokenizeRequest, detokenizeOptions);
-            console.log(`Detokenize complete: ${response.detokenizedFields?.length || 0} records processed`);
 
             // Return both data and errors for partial failure handling
             return {
@@ -205,7 +199,6 @@ class SkyflowClient {
 
         try {
             const response = await client.vault(vaultId).query(queryRequest);
-            console.log(`Query complete: ${response.fields?.length || 0} records returned`);
 
             // Remove empty tokenizedData field from response
             const cleanedResults = (response.fields || []).map(record => {
@@ -261,7 +254,6 @@ class SkyflowClient {
 
         try {
             const response = await client.vault(vaultId).insert(insertRequest, insertOptions);
-            console.log(`Tokenize-BYOT complete: ${response.insertedFields?.length || 0} records processed`);
 
             // Return both data and errors for partial failure handling
             return {

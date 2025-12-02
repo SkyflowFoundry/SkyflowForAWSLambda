@@ -34,14 +34,11 @@ exports.handler = async (event, context) => {
         // Route to Snowflake handler if path matches
         const path = event.path || event.rawPath || '';
         if (path.includes('/processSnowflake')) {
-            console.log('Routing to Snowflake handler');
             return await snowflakeHandler.handler(event, context);
         }
         // Initialize client on first invocation (singleton pattern)
         if (!skyflowClient) {
-            console.log('Initializing Skyflow client...');
             skyflowClient = new SkyflowClient(config);
-            console.log('Skyflow client initialized');
         }
 
         // Parse request body
@@ -53,10 +50,6 @@ exports.handler = async (event, context) => {
         const clusterId = getHeader(headers, 'x-skyflow-cluster-id');
         const vaultId = getHeader(headers, 'x-skyflow-vault-id');
         const table = getHeader(headers, 'x-skyflow-table');
-
-        console.log(`Operation: ${operation}`);
-        console.log(`Cluster ID: ${clusterId || 'not specified'}`);
-        console.log(`Vault ID: ${vaultId || 'not specified'}`);
 
         if (!clusterId) {
             throw new Error('Missing required header: X-Skyflow-Cluster-ID');
