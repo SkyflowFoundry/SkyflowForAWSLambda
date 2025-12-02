@@ -14,7 +14,8 @@ This is a generic REST API wrapper for Skyflow SDK operations, deployed as AWS L
 
 **Endpoints:**
 - `/process` - Standard REST API for all operations, configuration via `X-Skyflow-*` headers
-- `/processSnowflake` - Snowflake external function format with same `X-Skyflow-*` headers
+- `/processDatabricks` - Databricks integration endpoint (identical format to `/process`)
+- `/processSnowflake` - Snowflake external function format with `sf-custom-X-Skyflow-*` headers
 
 **Important:** All configuration (cluster ID, vault ID, table, operation) is provided via headers, not in the request payload. This enables multi-cluster deployments from a single Lambda function and provides a clean separation between configuration (headers) and data (payload).
 
@@ -36,7 +37,7 @@ Configuration is loaded via `config.js` with this priority:
 The deploy script automatically converts `skyflow-config.json` to environment variables during deployment, so credentials are never packaged in the Lambda ZIP file.
 
 ### Request Routing Pattern
-Both endpoints now use the same header-based configuration approach with `X-Skyflow-*` headers for consistency:
+All endpoints use header-based configuration with `X-Skyflow-*` headers:
 
 **Standard API (`POST /process`):**
 - Configuration via headers: `X-Skyflow-Operation`, `X-Skyflow-Cluster-ID`, `X-Skyflow-Vault-ID`, `X-Skyflow-Table` (for tokenize operations)
@@ -44,11 +45,16 @@ Both endpoints now use the same header-based configuration approach with `X-Skyf
 - Extracted case-insensitively in `handler.js:51-60`
 - Supports multi-column tokenization
 
+**Databricks API (`POST /processDatabricks`):**
+- Identical format to `/process` (uses same handler logic)
+- Separate endpoint for traffic isolation and analytics
+- See `samples/` directory for Pandas UDF examples
+
 **Snowflake External Functions (`POST /processSnowflake`):**
-- Same `X-Skyflow-*` headers as standard API
+- Uses `sf-custom-X-Skyflow-*` headers (Snowflake adds the `sf-custom-` prefix automatically)
 - Snowflake-specific request format: `{"data": [[rowNum, value], ...]}`
 - Additional header: `X-Skyflow-Column-Name` (single-column operations only)
-- Main handler (`handler.js:34-38`) routes requests to `snowflake-handler.js` when path includes `/processSnowflake`
+- Main handler (`handler.js:36-38`) routes requests to `snowflake-handler.js` when path includes `/processSnowflake`
 
 ### Snowflake Integration Pattern
 The Snowflake handler (`snowflake-handler.js`) implements the external function protocol:
@@ -159,6 +165,10 @@ lambda/
 ├── package.json             # Dependencies (skyflow-node SDK)
 └── utils/
     └── headers.js           # Shared header extraction utilities
+
+samples/
+├── databricks_skyflow_tokenize.py      # Databricks tokenization UDF
+└── databricks_skyflow_detokenize.py    # Databricks detokenization UDF
 
 deploy.sh                    # Deployment script (create/update/destroy)
 ```
