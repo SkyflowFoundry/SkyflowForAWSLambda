@@ -109,11 +109,11 @@ API Gateway URL:
 # Replace with your actual values
 curl -X POST https://your-api-url.amazonaws.com/process \
   -H "Content-Type: application/json" \
-  -H "X-Operation: tokenize" \
+  -H "X-Skyflow-Operation: tokenize" \
+  -H "X-Skyflow-Cluster-ID: ebfc9bee4242" \
+  -H "X-Skyflow-Vault-ID: ac7f4217c9e54fa7a6f4896c34f6964b" \
+  -H "X-Skyflow-Table: users" \
   -d '{
-    "cluster_id": "ebfc9bee4242",
-    "vault_id": "ac7f4217c9e54fa7a6f4896c34f6964b",
-    "table": "users",
     "records": [{"email": "test@example.com"}]
   }'
 ```
@@ -126,7 +126,7 @@ curl -X POST https://your-api-url.amazonaws.com/process \
 
 **Single Endpoint:** `POST /process`
 
-All operations use the same endpoint. The operation is specified via the `X-Operation` header.
+All operations use the same endpoint. The operation is specified via headers.
 
 ### Operations
 
@@ -137,11 +137,13 @@ All operations use the same endpoint. The operation is specified via the `X-Oper
 | `query` | Execute SQL queries against vault |
 | `tokenize-byot` | Insert with custom tokens |
 
-### Required Fields
+### Required Headers
 
-All requests require:
-- `cluster_id` - Your Skyflow cluster ID
-- `vault_id` - Your vault ID
+All requests require these headers:
+- `X-Skyflow-Operation` - Operation to perform (tokenize, detokenize, query, tokenize-byot)
+- `X-Skyflow-Cluster-ID` - Your Skyflow cluster ID
+- `X-Skyflow-Vault-ID` - Your vault ID
+- `X-Skyflow-Table` - Table name (required for tokenize and tokenize-byot operations)
 
 ---
 
@@ -152,11 +154,11 @@ All requests require:
 ```bash
 curl -X POST $API_URL \
   -H "Content-Type: application/json" \
-  -H "X-Operation: tokenize" \
+  -H "X-Skyflow-Operation: tokenize" \
+  -H "X-Skyflow-Cluster-ID: ebfc9bee4242" \
+  -H "X-Skyflow-Vault-ID: ac7f4217c9e54fa7a6f4896c34f6964b" \
+  -H "X-Skyflow-Table: users" \
   -d '{
-    "cluster_id": "ebfc9bee4242",
-    "vault_id": "ac7f4217c9e54fa7a6f4896c34f6964b",
-    "table": "users",
     "records": [
       {"email": "john@example.com"},
       {"email": "jane@example.com"}
@@ -190,11 +192,11 @@ curl -X POST $API_URL \
 ```bash
 curl -X POST $API_URL \
   -H "Content-Type: application/json" \
-  -H "X-Operation: tokenize" \
+  -H "X-Skyflow-Operation: tokenize" \
+  -H "X-Skyflow-Cluster-ID: ebfc9bee4242" \
+  -H "X-Skyflow-Vault-ID: ac7f4217c9e54fa7a6f4896c34f6964b" \
+  -H "X-Skyflow-Table: users" \
   -d '{
-    "cluster_id": "ebfc9bee4242",
-    "vault_id": "ac7f4217c9e54fa7a6f4896c34f6964b",
-    "table": "users",
     "records": [
       {
         "email": "john@example.com",
@@ -232,10 +234,10 @@ Omit `redactionType` to let Skyflow's governance engine determine the appropriat
 ```bash
 curl -X POST $API_URL \
   -H "Content-Type: application/json" \
-  -H "X-Operation: detokenize" \
+  -H "X-Skyflow-Operation: detokenize" \
+  -H "X-Skyflow-Cluster-ID: ebfc9bee4242" \
+  -H "X-Skyflow-Vault-ID: ac7f4217c9e54fa7a6f4896c34f6964b" \
   -d '{
-    "cluster_id": "ebfc9bee4242",
-    "vault_id": "ac7f4217c9e54fa7a6f4896c34f6964b",
     "tokens": ["tok_abc123xyz", "tok_def456abc"]
   }'
 ```
@@ -264,10 +266,10 @@ You can explicitly specify a redaction type to override governance policies:
 ```bash
 curl -X POST $API_URL \
   -H "Content-Type: application/json" \
-  -H "X-Operation: detokenize" \
+  -H "X-Skyflow-Operation: detokenize" \
+  -H "X-Skyflow-Cluster-ID: ebfc9bee4242" \
+  -H "X-Skyflow-Vault-ID: ac7f4217c9e54fa7a6f4896c34f6964b" \
   -d '{
-    "cluster_id": "ebfc9bee4242",
-    "vault_id": "ac7f4217c9e54fa7a6f4896c34f6964b",
     "tokens": ["tok_abc123xyz"],
     "options": {
       "redactionType": "MASKED"
@@ -287,10 +289,10 @@ curl -X POST $API_URL \
 ```bash
 curl -X POST $API_URL \
   -H "Content-Type: application/json" \
-  -H "X-Operation: query" \
+  -H "X-Skyflow-Operation: query" \
+  -H "X-Skyflow-Cluster-ID: ebfc9bee4242" \
+  -H "X-Skyflow-Vault-ID: ac7f4217c9e54fa7a6f4896c34f6964b" \
   -d '{
-    "cluster_id": "ebfc9bee4242",
-    "vault_id": "ac7f4217c9e54fa7a6f4896c34f6964b",
     "query": "SELECT email, created_at FROM users WHERE created_at > '\''2024-01-01'\'' LIMIT 10"
   }'
 ```
@@ -319,11 +321,11 @@ curl -X POST $API_URL \
 ```bash
 curl -X POST $API_URL \
   -H "Content-Type: application/json" \
-  -H "X-Operation: tokenize-byot" \
+  -H "X-Skyflow-Operation: tokenize-byot" \
+  -H "X-Skyflow-Cluster-ID: ebfc9bee4242" \
+  -H "X-Skyflow-Vault-ID: ac7f4217c9e54fa7a6f4896c34f6964b" \
+  -H "X-Skyflow-Table: users" \
   -d '{
-    "cluster_id": "ebfc9bee4242",
-    "vault_id": "ac7f4217c9e54fa7a6f4896c34f6964b",
-    "table": "users",
     "records": [
       {
         "fields": {
@@ -371,15 +373,19 @@ Row numbers must match exactly between request and response.
 
 ### Configuration via Headers
 
-Snowflake passes configuration through custom headers (prefixed with `sf-custom-`):
+Snowflake automatically prefixes all custom headers with `sf-custom-`. When you define a header in your Snowflake EXTERNAL FUNCTION, Snowflake adds this prefix before sending the request.
 
-| Header | Required | Used For | Description |
-|--------|----------|----------|-------------|
-| `sf-custom-operation` | Yes | Both | Operation to perform: "tokenize" or "detokenize" |
-| `sf-custom-cluster-id` | Yes | Both | Your Skyflow cluster ID |
-| `sf-custom-vault-id` | Yes | Both | Your Skyflow vault ID |
-| `sf-custom-table` | Yes | Tokenize only | Table name for storing data |
-| `sf-custom-column-name` | Yes | Tokenize only | Column name in the table (single-column operations only) |
+For example, if you define `'X-Skyflow-Operation' = 'tokenize'` in your function's HEADERS clause, Snowflake will send it as `sf-custom-X-Skyflow-Operation`.
+
+**Headers to define in Snowflake (without the sf-custom- prefix):**
+
+| Header Name (in Snowflake) | Sent As | Required | Used For | Description |
+|----------------------------|---------|----------|----------|-------------|
+| `X-Skyflow-Operation` | `sf-custom-X-Skyflow-Operation` | Yes | Both | Operation to perform: "tokenize" or "detokenize" |
+| `X-Skyflow-Cluster-ID` | `sf-custom-X-Skyflow-Cluster-ID` | Yes | Both | Your Skyflow cluster ID |
+| `X-Skyflow-Vault-ID` | `sf-custom-X-Skyflow-Vault-ID` | Yes | Both | Your Skyflow vault ID |
+| `X-Skyflow-Table` | `sf-custom-X-Skyflow-Table` | Yes | Tokenize only | Table name for storing data |
+| `X-Skyflow-Column-Name` | `sf-custom-X-Skyflow-Column-Name` | Yes | Tokenize only | Column name in the table (single-column operations only) |
 
 ### Setup in Snowflake
 
@@ -400,11 +406,11 @@ CREATE OR REPLACE EXTERNAL FUNCTION skyflow_tokenize(plaintext VARCHAR)
   RETURNS VARCHAR
   API_INTEGRATION = skyflow_api_integration
   HEADERS = (
-    'operation' = 'tokenize',
-    'cluster-id' = 'ebfc9bee4242',
-    'vault-id' = 'ac7f4217c9e54fa7a6f4896c34f6964b',
-    'table' = 'users',
-    'column-name' = 'email'
+    'X-Skyflow-Operation' = 'tokenize',
+    'X-Skyflow-Cluster-ID' = 'ebfc9bee4242',
+    'X-Skyflow-Vault-ID' = 'ac7f4217c9e54fa7a6f4896c34f6964b',
+    'X-Skyflow-Table' = 'users',
+    'X-Skyflow-Column-Name' = 'email'
   )
   AS 'https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake';
 ```
@@ -416,9 +422,9 @@ CREATE OR REPLACE EXTERNAL FUNCTION skyflow_detokenize(token VARCHAR)
   RETURNS VARCHAR
   API_INTEGRATION = skyflow_api_integration
   HEADERS = (
-    'operation' = 'detokenize',
-    'cluster-id' = 'ebfc9bee4242',
-    'vault-id' = 'ac7f4217c9e54fa7a6f4896c34f6964b'
+    'X-Skyflow-Operation' = 'detokenize',
+    'X-Skyflow-Cluster-ID' = 'ebfc9bee4242',
+    'X-Skyflow-Vault-ID' = 'ac7f4217c9e54fa7a6f4896c34f6964b'
   )
   AS 'https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake';
 ```
@@ -474,17 +480,17 @@ WHERE created_date > '2024-01-01';
 
 ### Test with curl
 
-Emulate a Snowflake request for testing:
+Emulate a Snowflake request for testing (note the `sf-custom-` prefix that Snowflake adds):
 
 **Tokenize:**
 ```bash
 curl -X POST https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake \
   -H "Content-Type: application/json" \
-  -H "sf-custom-operation: tokenize" \
-  -H "sf-custom-cluster-id: ebfc9bee4242" \
-  -H "sf-custom-vault-id: ac7f4217c9e54fa7a6f4896c34f6964b" \
-  -H "sf-custom-table: users" \
-  -H "sf-custom-column-name: email" \
+  -H "sf-custom-X-Skyflow-Operation: tokenize" \
+  -H "sf-custom-X-Skyflow-Cluster-ID: ebfc9bee4242" \
+  -H "sf-custom-X-Skyflow-Vault-ID: ac7f4217c9e54fa7a6f4896c34f6964b" \
+  -H "sf-custom-X-Skyflow-Table: users" \
+  -H "sf-custom-X-Skyflow-Column-Name: email" \
   -d '{"data":[[0,"john@example.com"],[1,"jane@example.com"]]}'
 ```
 
@@ -502,9 +508,9 @@ curl -X POST https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnow
 ```bash
 curl -X POST https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake \
   -H "Content-Type: application/json" \
-  -H "sf-custom-operation: detokenize" \
-  -H "sf-custom-cluster-id: ebfc9bee4242" \
-  -H "sf-custom-vault-id: ac7f4217c9e54fa7a6f4896c34f6964b" \
+  -H "sf-custom-X-Skyflow-Operation: detokenize" \
+  -H "sf-custom-X-Skyflow-Cluster-ID: ebfc9bee4242" \
+  -H "sf-custom-X-Skyflow-Vault-ID: ac7f4217c9e54fa7a6f4896c34f6964b" \
   -d '{"data":[[0,"tok_abc123xyz"],[1,"tok_def456abc"]]}'
 ```
 
@@ -545,22 +551,18 @@ API_URL = "https://your-api.amazonaws.com/process"
 def tokenize(cluster_id, vault_id, table, records):
     response = requests.post(
         API_URL,
-        headers={"X-Operation": "tokenize"},
-        json={
-            "cluster_id": cluster_id,
-            "vault_id": vault_id,
-            "table": table,
-            "records": records
-        }
+        headers={
+            "X-Skyflow-Operation": "tokenize",
+            "X-Skyflow-Cluster-ID": cluster_id,
+            "X-Skyflow-Vault-ID": vault_id,
+            "X-Skyflow-Table": table
+        },
+        json={"records": records}
     )
     return response.json()["data"]
 
 def detokenize(cluster_id, vault_id, tokens, redaction_type=None):
-    payload = {
-        "cluster_id": cluster_id,
-        "vault_id": vault_id,
-        "tokens": tokens
-    }
+    payload = {"tokens": tokens}
 
     # Only include options if redaction_type is specified
     if redaction_type:
@@ -568,7 +570,11 @@ def detokenize(cluster_id, vault_id, tokens, redaction_type=None):
 
     response = requests.post(
         API_URL,
-        headers={"X-Operation": "detokenize"},
+        headers={
+            "X-Skyflow-Operation": "detokenize",
+            "X-Skyflow-Cluster-ID": cluster_id,
+            "X-Skyflow-Vault-ID": vault_id
+        },
         json=payload
     )
     return response.json()["data"]
@@ -605,24 +611,23 @@ const axios = require('axios');
 const API_URL = 'https://your-api.amazonaws.com/process';
 
 async function tokenize(clusterId, vaultId, table, records) {
-  const response = await axios.post(API_URL, {
-    cluster_id: clusterId,
-    vault_id: vaultId,
-    table: table,
-    records: records
-  }, {
-    headers: { 'X-Operation': 'tokenize' }
-  });
+  const response = await axios.post(API_URL,
+    { records: records },
+    {
+      headers: {
+        'X-Skyflow-Operation': 'tokenize',
+        'X-Skyflow-Cluster-ID': clusterId,
+        'X-Skyflow-Vault-ID': vaultId,
+        'X-Skyflow-Table': table
+      }
+    }
+  );
 
   return response.data.data;
 }
 
 async function detokenize(clusterId, vaultId, tokens, redactionType = null) {
-  const payload = {
-    cluster_id: clusterId,
-    vault_id: vaultId,
-    tokens: tokens
-  };
+  const payload = { tokens: tokens };
 
   // Only include options if redactionType is specified
   if (redactionType) {
@@ -630,7 +635,11 @@ async function detokenize(clusterId, vaultId, tokens, redactionType = null) {
   }
 
   const response = await axios.post(API_URL, payload, {
-    headers: { 'X-Operation': 'detokenize' }
+    headers: {
+      'X-Skyflow-Operation': 'detokenize',
+      'X-Skyflow-Cluster-ID': clusterId,
+      'X-Skyflow-Vault-ID': vaultId
+    }
   });
 
   return response.data.data;
@@ -754,8 +763,9 @@ All errors return HTTP 500 with:
 ```
 
 Common errors:
-- `Missing required field: cluster_id`
-- `Missing required field: vault_id`
+- `Missing required header: X-Skyflow-Cluster-ID`
+- `Missing required header: X-Skyflow-Vault-ID`
+- `Missing required header: X-Skyflow-Table`
 - `Tokenization failed: Invalid vault ID`
 - `Query failed: SQL syntax error`
 
@@ -796,8 +806,8 @@ Monitor in AWS Console:
 - Create `lambda/skyflow-config.json` from `config.example.json`
 - Verify the file is in the correct location
 
-### Error: "Missing required field: cluster_id"
-- Ensure your request body includes both `cluster_id` and `vault_id`
+### Error: "Missing required header: X-Skyflow-Cluster-ID"
+- Ensure your request includes the required headers: `X-Skyflow-Cluster-ID` and `X-Skyflow-Vault-ID`
 
 ### High latency
 - Increase Lambda memory (more CPU): edit `MEMORY_SIZE` in `deploy.sh`

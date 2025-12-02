@@ -5,7 +5,7 @@
  * 1. Environment variables (production)
  * 2. skyflow-config.json file (development)
  *
- * Note: cluster_id is now provided in each API request payload, not in config
+ * Note: cluster_id is now provided in each API request headers, not in config
  */
 
 const fs = require('fs');

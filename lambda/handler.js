@@ -13,6 +13,7 @@ const SkyflowClient = require('./skyflow-client');
 const config = require('./config');
 const { SkyflowError } = require('skyflow-node');
 const snowflakeHandler = require('./snowflake-handler');
+const { getHeader } = require('./utils/headers');
 
 // Singleton client instance (reused across warm invocations)
 let skyflowClient;
@@ -46,19 +47,22 @@ exports.handler = async (event, context) => {
         // Parse request body
         const body = JSON.parse(event.body || '{}');
 
-        // Extract operation from header (case-insensitive)
+        // Extract configuration from headers (case-insensitive)
         const headers = event.headers || {};
-        const operation = (headers['x-operation'] || headers['X-Operation'] || '').toLowerCase();
+        const operation = (getHeader(headers, 'x-skyflow-operation') || '').toLowerCase();
+        const clusterId = getHeader(headers, 'x-skyflow-cluster-id');
+        const vaultId = getHeader(headers, 'x-skyflow-vault-id');
+        const table = getHeader(headers, 'x-skyflow-table');
 
         console.log(`Operation: ${operation}`);
-        console.log(`Cluster ID: ${body.cluster_id || 'not specified'}`);
-        console.log(`Vault ID: ${body.vault_id || 'not specified'}`);
+        console.log(`Cluster ID: ${clusterId || 'not specified'}`);
+        console.log(`Vault ID: ${vaultId || 'not specified'}`);
 
-        if (!body.cluster_id) {
-            throw new Error('Missing required field: cluster_id');
+        if (!clusterId) {
+            throw new Error('Missing required header: X-Skyflow-Cluster-ID');
         }
-        if (!body.vault_id) {
-            throw new Error('Missing required field: vault_id');
+        if (!vaultId) {
+            throw new Error('Missing required header: X-Skyflow-Vault-ID');
         }
 
         let result;
@@ -66,11 +70,14 @@ exports.handler = async (event, context) => {
 
         switch (operation) {
             case 'tokenize':
+                if (!table) {
+                    throw new Error('Missing required header: X-Skyflow-Table (required for tokenize)');
+                }
                 validateTokenizeRequest(body);
                 result = await skyflowClient.tokenize(
-                    body.cluster_id,
-                    body.vault_id,
-                    body.table,
+                    clusterId,
+                    vaultId,
+                    table,
                     body.records,
                     body.options || {}
                 );
@@ -79,8 +86,8 @@ exports.handler = async (event, context) => {
             case 'detokenize':
                 validateDetokenizeRequest(body);
                 result = await skyflowClient.detokenize(
-                    body.cluster_id,
-                    body.vault_id,
+                    clusterId,
+                    vaultId,
                     body.tokens,
                     body.options || {}
                 );
@@ -89,24 +96,27 @@ exports.handler = async (event, context) => {
             case 'query':
                 validateQueryRequest(body);
                 result = await skyflowClient.query(
-                    body.cluster_id,
-                    body.vault_id,
+                    clusterId,
+                    vaultId,
                     body.query
                 );
                 break;
 
             case 'tokenize-byot':
+                if (!table) {
+                    throw new Error('Missing required header: X-Skyflow-Table (required for tokenize-byot)');
+                }
                 validateTokenizeByotRequest(body);
                 result = await skyflowClient.tokenizeByot(
-                    body.cluster_id,
-                    body.vault_id,
-                    body.table,
+                    clusterId,
+                    vaultId,
+                    table,
                     body.records
                 );
                 break;
 
             default:
-                throw new Error(`Unknown operation: ${operation}. Supported operations (via X-Operation header): tokenize, detokenize, query, tokenize-byot`);
+                throw new Error(`Unknown operation: ${operation}. Supported operations (via X-Skyflow-Operation header): tokenize, detokenize, query, tokenize-byot`);
         }
 
         const elapsed = Date.now() - startTime;
@@ -193,7 +203,6 @@ exports.handler = async (event, context) => {
  * Request validation functions
  */
 function validateTokenizeRequest(body) {
-    if (!body.table) throw new Error('Missing required field: table');
     if (!body.records || !Array.isArray(body.records)) {
         throw new Error('Missing or invalid field: records (must be array)');
     }
@@ -234,7 +243,6 @@ function validateQueryRequest(body) {
 }
 
 function validateTokenizeByotRequest(body) {
-    if (!body.table) throw new Error('Missing required field: table');
     if (!body.records || !Array.isArray(body.records)) {
         throw new Error('Missing or invalid field: records (must be array)');
     }

@@ -5,17 +5,24 @@
  * Request:  {"data": [[rowNum, value], [rowNum, value], ...]}
  * Response: {"data": [[rowNum, result], [rowNum, result], ...]}
  *
- * Extracts configuration from Snowflake custom headers:
- * - sf-custom-operation (required) - "tokenize" or "detokenize"
- * - sf-custom-cluster-id (required)
- * - sf-custom-vault-id (required)
- * - sf-custom-table (required for tokenize)
- * - sf-custom-column-name (required for tokenize)
+ * IMPORTANT: Snowflake automatically prefixes all custom headers with 'sf-custom-'
+ * When you define a header in Snowflake SQL as 'X-Skyflow-Operation',
+ * Snowflake sends it as 'sf-custom-X-Skyflow-Operation'
+ *
+ * Headers to define in Snowflake SQL (without prefix):
+ * - X-Skyflow-Operation (required) - "tokenize" or "detokenize"
+ * - X-Skyflow-Cluster-ID (required)
+ * - X-Skyflow-Vault-ID (required)
+ * - X-Skyflow-Table (required for tokenize)
+ * - X-Skyflow-Column-Name (required for tokenize)
+ *
+ * Handler looks for these with 'sf-custom-' prefix added by Snowflake.
  */
 
 const SkyflowClient = require('./skyflow-client');
 const config = require('./config');
 const { SkyflowError } = require('skyflow-node');
+const { getHeader } = require('./utils/headers');
 
 // Singleton client instance (reused across warm invocations)
 let skyflowClient;
@@ -38,39 +45,32 @@ exports.handler = async (event, context) => {
             console.log('Skyflow client initialized');
         }
 
-        // Extract Snowflake headers (case-insensitive)
+        // Extract headers (case-insensitive)
         const headers = event.headers || {};
-        const sfHeaders = extractSnowflakeHeaders(headers);
-
-        // Log Snowflake metadata
-        console.log('Snowflake metadata:', {
-            batchId: sfHeaders.batchId,
-            queryId: sfHeaders.queryId,
-            formatVersion: sfHeaders.formatVersion
-        });
+        const requestConfig = extractHeaders(headers);
 
         // Parse request body (Snowflake format)
         const body = JSON.parse(event.body || '{}');
         const rows = body.data || [];
 
         if (!Array.isArray(rows) || rows.length === 0) {
-            throw new Error('Invalid Snowflake request: data array is empty or missing');
+            throw new Error('Invalid request: data array is empty or missing');
         }
 
         console.log(`Processing ${rows.length} rows`);
 
         // Validate required headers
-        if (!sfHeaders.clusterId) {
-            throw new Error('Missing required header: sf-custom-cluster-id');
+        if (!requestConfig.clusterId) {
+            throw new Error('Missing required header: X-Skyflow-Cluster-ID');
         }
-        if (!sfHeaders.vaultId) {
-            throw new Error('Missing required header: sf-custom-vault-id');
+        if (!requestConfig.vaultId) {
+            throw new Error('Missing required header: X-Skyflow-Vault-ID');
         }
 
         // Determine operation from header
-        const operation = sfHeaders.operation;
+        const operation = requestConfig.operation;
         if (!operation) {
-            throw new Error('Missing required header: sf-custom-operation (must be "tokenize" or "detokenize")');
+            throw new Error('Missing required header: X-Skyflow-Operation (must be "tokenize" or "detokenize")');
         }
         if (operation !== 'tokenize' && operation !== 'detokenize') {
             throw new Error(`Invalid operation: ${operation}. Must be "tokenize" or "detokenize"`);
@@ -82,9 +82,9 @@ exports.handler = async (event, context) => {
         let result;
 
         if (operation === 'tokenize') {
-            result = await handleTokenize(rows, sfHeaders, skyflowClient);
+            result = await handleTokenize(rows, requestConfig, skyflowClient);
         } else {
-            result = await handleDetokenize(rows, sfHeaders, skyflowClient);
+            result = await handleDetokenize(rows, requestConfig, skyflowClient);
         }
 
         const elapsed = Date.now() - startTime;
@@ -146,14 +146,14 @@ exports.handler = async (event, context) => {
  * Handle tokenize operation
  * Converts plaintext values to tokens
  */
-async function handleTokenize(rows, sfHeaders, client) {
-    const { clusterId, vaultId, table, columnName } = sfHeaders;
+async function handleTokenize(rows, requestConfig, client) {
+    const { clusterId, vaultId, table, columnName } = requestConfig;
 
     if (!table) {
-        throw new Error('Missing required header: sf-custom-table (required for tokenize)');
+        throw new Error('Missing required header: X-Skyflow-Table (required for tokenize)');
     }
     if (!columnName) {
-        throw new Error('Missing required header: sf-custom-column-name (required for tokenize)');
+        throw new Error('Missing required header: X-Skyflow-Column-Name (required for tokenize)');
     }
 
     console.log(`Tokenize: cluster=${clusterId}, vault=${vaultId}, table=${table}, column=${columnName}, count=${rows.length}`);
@@ -179,8 +179,8 @@ async function handleTokenize(rows, sfHeaders, client) {
  * Handle detokenize operation
  * Converts tokens to plaintext values
  */
-async function handleDetokenize(rows, sfHeaders, client) {
-    const { clusterId, vaultId } = sfHeaders;
+async function handleDetokenize(rows, requestConfig, client) {
+    const { clusterId, vaultId } = requestConfig;
 
     console.log(`Detokenize: cluster=${clusterId}, vault=${vaultId}, count=${rows.length}`);
 
@@ -199,26 +199,18 @@ async function handleDetokenize(rows, sfHeaders, client) {
 }
 
 /**
- * Extract Snowflake headers (case-insensitive)
+ * Extract headers (case-insensitive)
+ *
+ * Note: Snowflake automatically prefixes custom headers with 'sf-custom-'
+ * For example, if you define HEADERS = ('X-Skyflow-Operation' = 'tokenize'),
+ * Snowflake will send the header as 'sf-custom-X-Skyflow-Operation'
  */
-function extractSnowflakeHeaders(headers) {
-    const getHeader = (name) => {
-        const lowerName = name.toLowerCase();
-        const key = Object.keys(headers).find(k => k.toLowerCase() === lowerName);
-        return key ? headers[key] : null;
-    };
-
+function extractHeaders(headers) {
     return {
-        // Custom headers (configuration)
-        operation: getHeader('sf-custom-operation'),
-        clusterId: getHeader('sf-custom-cluster-id'),
-        vaultId: getHeader('sf-custom-vault-id'),
-        table: getHeader('sf-custom-table'),
-        columnName: getHeader('sf-custom-column-name'), // Optional
-
-        // Snowflake metadata headers
-        batchId: getHeader('sf-external-function-query-batch-id'),
-        queryId: getHeader('sf-external-function-current-query-id'),
-        formatVersion: getHeader('sf-external-function-format-version')
+        operation: getHeader(headers, 'sf-custom-x-skyflow-operation'),
+        clusterId: getHeader(headers, 'sf-custom-x-skyflow-cluster-id'),
+        vaultId: getHeader(headers, 'sf-custom-x-skyflow-vault-id'),
+        table: getHeader(headers, 'sf-custom-x-skyflow-table'),
+        columnName: getHeader(headers, 'sf-custom-x-skyflow-column-name')
     };
 }

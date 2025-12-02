@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a generic REST API wrapper for Skyflow SDK operations, deployed as AWS Lambda + API Gateway. It provides a single endpoint that routes to different Skyflow operations based on the `X-Operation` header.
+This is a generic REST API wrapper for Skyflow SDK operations, deployed as AWS Lambda + API Gateway. Both endpoints use a unified header-based configuration approach using `X-Skyflow-*` headers.
 
 **Core Operations:**
 - `tokenize` - Insert sensitive data and receive tokens (multi-column support)
@@ -12,11 +12,11 @@ This is a generic REST API wrapper for Skyflow SDK operations, deployed as AWS L
 - `query` - Execute SQL queries against vault data
 - `tokenize-byot` - Insert records with custom tokens (Bring Your Own Token)
 
-**Snowflake External Functions:**
-- `/processSnowflake` - Single endpoint for tokenize and detokenize operations using Snowflake external function format
-  - Operation determined by `sf-custom-operation` header ("tokenize" or "detokenize")
+**Endpoints:**
+- `/process` - Standard REST API for all operations, configuration via `X-Skyflow-*` headers
+- `/processSnowflake` - Snowflake external function format with same `X-Skyflow-*` headers
 
-**Important:** Cluster ID is now provided in each API request payload (not in config) for standard operations, or via `sf-custom-cluster-id` header for Snowflake operations, enabling multi-cluster deployments from a single Lambda function.
+**Important:** All configuration (cluster ID, vault ID, table, operation) is provided via headers, not in the request payload. This enables multi-cluster deployments from a single Lambda function and provides a clean separation between configuration (headers) and data (payload).
 
 ## Key Architecture Principles
 
@@ -31,30 +31,42 @@ Configuration is loaded via `config.js` with this priority:
 1. **Environment variables** (production - used when `SKYFLOW_API_KEY` or `SKYFLOW_CLIENT_ID` is set)
 2. **skyflow-config.json file** (development - used as fallback)
 
-**Key Change:** Cluster ID is no longer stored in config. It's provided in each API request, making the Lambda function agnostic to which Skyflow cluster is being targeted.
+**Key Change:** Cluster ID is no longer stored in config. It's provided via headers in each API request, making the Lambda function agnostic to which Skyflow cluster is being targeted.
 
 The deploy script automatically converts `skyflow-config.json` to environment variables during deployment, so credentials are never packaged in the Lambda ZIP file.
 
 ### Request Routing Pattern
-**Standard API:** All operations use a single endpoint (`POST /process`). The operation is determined by the `X-Operation` header, which is extracted case-insensitively in `handler.js:38`. This allows for a unified API Gateway configuration while supporting multiple operations.
+Both endpoints now use the same header-based configuration approach with `X-Skyflow-*` headers for consistency:
 
-**Snowflake External Functions:** A dedicated endpoint (`POST /processSnowflake`) handles Snowflake's specific external function format. The operation (tokenize or detokenize) is determined by the `sf-custom-operation` header. The main handler (`handler.js:34-38`) routes requests to `snowflake-handler.js` when the path includes `/processSnowflake`.
+**Standard API (`POST /process`):**
+- Configuration via headers: `X-Skyflow-Operation`, `X-Skyflow-Cluster-ID`, `X-Skyflow-Vault-ID`, `X-Skyflow-Table` (for tokenize operations)
+- Data in JSON payload: `records`, `tokens`, `query`, `options`
+- Extracted case-insensitively in `handler.js:51-60`
+- Supports multi-column tokenization
+
+**Snowflake External Functions (`POST /processSnowflake`):**
+- Same `X-Skyflow-*` headers as standard API
+- Snowflake-specific request format: `{"data": [[rowNum, value], ...]}`
+- Additional header: `X-Skyflow-Column-Name` (single-column operations only)
+- Main handler (`handler.js:34-38`) routes requests to `snowflake-handler.js` when path includes `/processSnowflake`
 
 ### Snowflake Integration Pattern
 The Snowflake handler (`snowflake-handler.js`) implements the external function protocol:
 - **Request Format:** `{"data": [[rowNum, value], [rowNum, value], ...]}`
 - **Response Format:** `{"data": [[rowNum, result], [rowNum, result], ...]}`
-- **Operation Selection:** Determined by `sf-custom-operation` header ("tokenize" or "detokenize")
-- **Configuration:** Extracted from Snowflake custom headers:
-  - `sf-custom-cluster-id` (required for both)
-  - `sf-custom-vault-id` (required for both)
-  - `sf-custom-table` (required for tokenize)
-  - `sf-custom-column-name` (required for tokenize)
+- **Header Prefixing:** Snowflake automatically adds `sf-custom-` prefix to all custom headers
+  - Example: Define `'X-Skyflow-Operation' = 'tokenize'` in SQL → Snowflake sends `sf-custom-X-Skyflow-Operation`
+- **Operation Selection:** Determined by `sf-custom-X-Skyflow-Operation` header ("tokenize" or "detokenize")
+- **Configuration:** Extracted from Snowflake custom headers (with sf-custom- prefix):
+  - `sf-custom-X-Skyflow-Cluster-ID` (required for both)
+  - `sf-custom-X-Skyflow-Vault-ID` (required for both)
+  - `sf-custom-X-Skyflow-Table` (required for tokenize)
+  - `sf-custom-X-Skyflow-Column-Name` (required for tokenize)
 - **Single-Column Limitation:** Each function handles one column only; multi-column tokenization requires multiple external functions
 - **Row Order Preservation:** Skyflow SDK guarantees order is maintained, simplifying the implementation
 - **Batching:** Snowflake automatically batches rows; each batch is processed as a single request
 
-The handler extracts the operation from the header, extracts row numbers and values, calls the appropriate Skyflow operation (using the shared `skyflow-client.js`), and reconstructs the Snowflake response format maintaining row order.
+The handler extracts the operation from the header (accounting for Snowflake's sf-custom- prefix), extracts row numbers and values, calls the appropriate Skyflow operation (using the shared `skyflow-client.js`), and reconstructs the Snowflake response format maintaining row order.
 
 ## Development Commands
 
@@ -128,7 +140,7 @@ This creates:
 }
 ```
 
-**Note:** `cluster_id` is provided in each API request payload, not in the config.
+**Note:** `cluster_id` and `vault_id` are provided via headers in each API request, not in the config or payload.
 
 ### Production (AWS Lambda)
 Environment variables are automatically set by the deploy script from `skyflow-config.json`. The configuration file is excluded from the Lambda ZIP file for security.
@@ -144,7 +156,9 @@ lambda/
 ├── config.example.json      # API Key auth template
 ├── config.example-jwt.json  # JWT auth template
 ├── skyflow-config.json      # Local credentials (git-ignored)
-└── package.json             # Dependencies (skyflow-node SDK)
+├── package.json             # Dependencies (skyflow-node SDK)
+└── utils/
+    └── headers.js           # Shared header extraction utilities
 
 deploy.sh                    # Deployment script (create/update/destroy)
 ```
@@ -155,17 +169,18 @@ deploy.sh                    # Deployment script (create/update/destroy)
 - **Purpose:** Lambda entry point, request routing, input validation
 - **Singleton:** Maintains single `skyflowClient` instance across warm invocations
 - **Path Routing:** Routes to `snowflake-handler` when path contains `/processSnowflake` (line 34-38)
-- **Operation Routing:** Extracts `X-Operation` header (case-insensitive) for standard API
-- **Validation:** Validates both `cluster_id` and `vault_id` are present in every request
+- **Header Extraction:** Extracts configuration from `X-Skyflow-*` headers (case-insensitive) using shared `utils/headers.js`
+- **Configuration Headers:** `X-Skyflow-Operation`, `X-Skyflow-Cluster-ID`, `X-Skyflow-Vault-ID`, `X-Skyflow-Table`
+- **Validation:** Validates required headers are present: `cluster_id` and `vault_id` always required, `table` required for tokenize/tokenize-byot
 - **Parameter Passing:** Passes `cluster_id` as first parameter to all skyflow-client methods
 - **Response Format:** All responses include `success`, `data`, and `metadata` fields
 
 ### snowflake-handler.js
 - **Purpose:** Handles Snowflake external function requests with specific format
 - **Singleton:** Uses shared `skyflowClient` singleton for warm invocations
-- **Header Extraction:** Extracts configuration from `sf-custom-*` headers (case-insensitive)
-- **Operation Selection:** Determines operation from `sf-custom-operation` header ("tokenize" or "detokenize")
-- **Snowflake Metadata:** Logs `sf-external-function-query-batch-id` and `sf-external-function-current-query-id`
+- **Header Extraction:** Extracts configuration from `sf-custom-X-Skyflow-*` headers (case-insensitive) using shared `utils/headers.js`
+- **Snowflake Prefix:** Accounts for Snowflake's automatic `sf-custom-` prefix on all custom headers
+- **Operation Selection:** Determines operation from `sf-custom-X-Skyflow-Operation` header ("tokenize" or "detokenize")
 - **Format Conversion:** Converts Snowflake's `[[rowNum, value], ...]` format to/from Skyflow format
 - **Order Preservation:** Relies on Skyflow SDK's guarantee to preserve row order
 - **Operations:** Supports `tokenize` (requires table and column-name headers) and `detokenize` (vault-level)
@@ -186,30 +201,39 @@ deploy.sh                    # Deployment script (create/update/destroy)
 - **Batching:** Optional batching configuration for tokenize/detokenize operations
 - **Key Change:** No longer loads or validates vault URL or cluster ID
 
+### utils/headers.js
+- **Purpose:** Shared utilities for HTTP header extraction
+- **getHeader():** Case-insensitive header lookup with null safety
+- **getHeaders():** Batch extraction of multiple headers
+- **Used By:** Both `handler.js` and `snowflake-handler.js` for consistent header parsing
+- **Benefits:** Eliminates code duplication, single source of truth for header extraction logic
+
 ## Multi-Column Tokenization
 
-All tokenization operations support multiple columns per record:
+All tokenization operations support multiple columns per record. Configuration is in headers, data in payload:
 
-```javascript
-// Single column
-{
-  "cluster_id": "your-cluster-id",
-  "vault_id": "your-vault-id",
-  "records": [{"email": "john@example.com"}]
-}
+```bash
+# Single column
+curl -X POST $API_URL \
+  -H "X-Skyflow-Operation: tokenize" \
+  -H "X-Skyflow-Cluster-ID: your-cluster-id" \
+  -H "X-Skyflow-Vault-ID: your-vault-id" \
+  -H "X-Skyflow-Table: users" \
+  -d '{"records": [{"email": "john@example.com"}]}'
 
-// Multi-column
-{
-  "cluster_id": "your-cluster-id",
-  "vault_id": "your-vault-id",
-  "records": [
-    {
+# Multi-column
+curl -X POST $API_URL \
+  -H "X-Skyflow-Operation: tokenize" \
+  -H "X-Skyflow-Cluster-ID: your-cluster-id" \
+  -H "X-Skyflow-Vault-ID: your-vault-id" \
+  -H "X-Skyflow-Table: users" \
+  -d '{
+    "records": [{
       "email": "john@example.com",
       "name": "John Doe",
       "ssn": "123-45-6789"
-    }
-  ]
-}
+    }]
+  }'
 ```
 
 The response includes tokens for **all columns**:
@@ -236,8 +260,8 @@ If a record with the upsert column value already exists, the API returns the exi
 
 ## Common Pitfalls
 
-### Missing cluster_id or vault_id
-All operations require both `cluster_id` and `vault_id` in the request body. These are validated in `handler.js:44-49` before routing.
+### Missing cluster_id or vault_id headers
+All operations require both `X-Skyflow-Cluster-ID` and `X-Skyflow-Vault-ID` headers. These are validated in `handler.js:66-71` before routing.
 
 ### Detokenization is Vault-Level
 Unlike tokenization, detokenization does not require `table` or `column` fields. Tokens are vault-level identifiers.
@@ -300,21 +324,21 @@ API_URL="https://abc123xyz.execute-api.us-east-1.amazonaws.com/process"
 # Tokenize
 curl -X POST $API_URL \
   -H "Content-Type: application/json" \
-  -H "X-Operation: tokenize" \
+  -H "X-Skyflow-Operation: tokenize" \
+  -H "X-Skyflow-Cluster-ID: your-cluster-id" \
+  -H "X-Skyflow-Vault-ID: your-vault-id" \
+  -H "X-Skyflow-Table: users" \
   -d '{
-    "cluster_id": "your-cluster-id",
-    "vault_id": "your-vault-id",
-    "table": "users",
     "records": [{"email": "test@example.com"}]
   }'
 
 # Detokenize
 curl -X POST $API_URL \
   -H "Content-Type: application/json" \
-  -H "X-Operation: detokenize" \
+  -H "X-Skyflow-Operation: detokenize" \
+  -H "X-Skyflow-Cluster-ID: your-cluster-id" \
+  -H "X-Skyflow-Vault-ID: your-vault-id" \
   -d '{
-    "cluster_id": "your-cluster-id",
-    "vault_id": "your-vault-id",
     "tokens": ["tok_abc123xyz"]
   }'
 ```
