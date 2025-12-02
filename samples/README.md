@@ -2,84 +2,199 @@
 
 This directory contains Databricks notebook examples for integrating Skyflow tokenization and detokenization into your Spark workflows.
 
+## Two Integration Approaches
+
+Choose the approach that best fits your use case:
+
+| Feature | Temporary UDFs | Unity Catalog Functions |
+|---------|----------------|-------------------------|
+| **Setup Complexity** | Simple (run notebook) | Simple (run notebook cells 1-3) |
+| **Function Lifecycle** | Session-scoped | Permanent (cluster-wide) |
+| **User Availability** | Single session only | All users with permissions |
+| **Configuration** | In notebook (flexible) | Embedded in function (centralized) |
+| **Function Signature** | `skyflow_tokenize(value)` | `skyflow_tokenize(value, table, column)` |
+| **Cluster/Vault Config** | Set per notebook | Embedded at function creation |
+| **View Persistence** | Temporary views only | Persistent views supported |
+| **API Batching** | ✅ Yes (25 rows/call) | ❌ No (1 row/call - scalar UDF) |
+| **Performance** | Optimal for high-volume | Spark parallelizes across partitions |
+| **Best For** | High-volume tokenization, development | Moderate-volume, shared access, persistent views |
+| **Files** | `databricks_skyflow.ipynb` | `databricks_unity_catalog.ipynb` |
+
+### Recommendation
+
+**For high-volume workloads (100K+ rows):**
+- Use **Temporary UDFs** (`databricks_skyflow.ipynb`) for optimal API batching (25 rows per call)
+- Batching reduces API costs and improves performance significantly
+
+**For shared production workflows with moderate volume:**
+- Use **Unity Catalog** (`databricks_unity_catalog.ipynb`) for persistent functions and views
+- Trade-off: More API calls (1 per row) but better for team collaboration and governance
+
+**For ad-hoc analysis:**
+- Use **Temporary UDFs** for flexibility and optimal performance
+
 ## Available Notebooks
 
-### databricks_skyflow_tokenize.py
-Tokenize sensitive data columns using a Pandas UDF that calls the Lambda `/processDatabricks` endpoint.
+### 1. Temporary UDFs (Quick Start)
 
-**Use Case:** Protect sensitive data (emails, SSNs, credit cards) before storing in your data warehouse.
+#### databricks_skyflow.ipynb
+Complete notebook with tokenization and detokenization using session-scoped Pandas UDFs.
+
+**Features:**
+- ✅ Single notebook with full workflow
+- ✅ Test data generation (configurable N rows)
+- ✅ Tokenization and detokenization UDFs
+- ✅ Temporary view creation
+- ✅ SQL usage examples
+- ✅ Roundtrip verification
+
+**Use Case:** Individual analysts, data scientists doing exploratory work, development and testing.
 
 **Example:**
 ```python
-# After running the notebook to register the UDF:
+# After running the UDF registration cells:
 spark.sql("""
   SELECT
     user_id,
-    skyflow_tokenize(email) as email_token,
-    skyflow_tokenize(ssn) as ssn_token
+    skyflow_tokenize(email) as email_token
   FROM raw_users
 """)
 ```
 
-### databricks_skyflow_detokenize.py
-Detokenize Skyflow tokens back to plaintext using a Pandas UDF.
+### 2. Unity Catalog External Functions (Production)
 
-**Use Case:** Retrieve original values for authorized analytics or reporting.
+#### databricks_unity_catalog.ipynb
+**Complete self-contained notebook** - creates and demonstrates persistent external functions.
+
+**What it creates:**
+- `skyflow_tokenize()` function (persistent, cluster-wide) with embedded Lambda URL and credentials
+- `skyflow_detokenize()` function (persistent, cluster-wide) with embedded Lambda URL and credentials
+- Complete usage examples and test data
+
+**Features:**
+- ✅ **Self-contained setup** - Creates functions directly in the notebook (setup cells 1-3)
+- ✅ Test data generation
+- ✅ Persistent table and view creation
+- ✅ Roundtrip verification
+- ✅ Access control guidance
+- ✅ Production best practices
+
+**Important Performance Note:**
+- Unity Catalog SQL UDFs are **scalar functions** (process 1 row at a time)
+- Makes 1 API call per row (not batched like Pandas UDFs)
+- Spark parallelizes across partitions to maintain reasonable performance
+- **For high-volume tokenization (100K+ rows), use temporary Pandas UDFs instead for optimal batching**
+
+**Use Case:** Production ETL pipelines with moderate volume, shared team resources, BI tools requiring persistent views.
 
 **Example:**
-```python
-# After running the notebook to register the UDF:
-spark.sql("""
-  SELECT
-    user_id,
-    skyflow_detokenize(email_token) as email
-  FROM tokenized_users
-""")
+```sql
+-- Functions are always available (no registration needed)
+-- Cluster ID and Vault ID are embedded in the function at creation time
+SELECT
+  user_id,
+  skyflow_tokenize(email, 'users', 'email') as email_token
+FROM raw_users;
+
+-- Create persistent view (not possible with temporary UDFs!)
+CREATE VIEW users_detokenized AS
+SELECT
+  user_id,
+  skyflow_detokenize(email_token) as email
+FROM tokenized_users;
 ```
 
 ## Getting Started
 
-### 1. Deploy the Lambda Function
-First, deploy the Skyflow Lambda API to AWS:
-```bash
-cd ..  # Go to project root
-./deploy.sh
-```
+### Prerequisites (Both Approaches)
 
-Note the API URL from the deployment output.
+1. **Deploy the Lambda Function** to AWS:
+   ```bash
+   cd ..  # Go to project root
+   ./deploy.sh
+   ```
+   Note the `/processDatabricks` API URL from the deployment output.
 
-### 2. Configure the Notebook
-Open either notebook and update these constants:
+2. **Gather Skyflow credentials:**
+   - Cluster ID (e.g., `ebfc9bee4242`)
+   - Vault ID (e.g., `ac7f4217c9e54fa7a6f4896c34f6964b`)
+   - Table name (for tokenization)
 
-```python
-LAMBDA_URL = "https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processDatabricks"
-CLUSTER_ID = "your-cluster-id"  # e.g., "ebfc9bee4242"
-VAULT_ID   = "your-vault-id"    # e.g., "ac7f4217c9e54fa7a6f4896c34f6964b"
-TABLE      = "your-table-name"  # For tokenization only
-COLUMN_NAME = "your-column"     # For tokenization only
-```
+### Quick Start: Temporary UDFs
 
-### 3. Import to Databricks
-1. In your Databricks workspace, go to **Workspace** → **Create** → **Notebook**
-2. Click **Import** and upload the `.py` file
-3. Attach the notebook to a cluster
-4. Run all cells to register the UDF
+**Best for:** Ad-hoc analysis, development, individual users
 
-### 4. Use the UDF
-Once registered, the UDF is available in both Python and SQL:
+1. **Import notebook** to Databricks:
+   - Go to **Workspace** → **Create** → **Import**
+   - Upload `databricks_skyflow.ipynb`
+   - Attach to a cluster
 
-**Python:**
-```python
-from pyspark.sql.functions import col
+2. **Configure** (Cell 1):
+   ```python
+   LAMBDA_URL = "https://YOUR_API_ID.execute-api.YOUR_REGION.amazonaws.com/processDatabricks"
+   CLUSTER_ID = "your-cluster-id"
+   VAULT_ID = "your-vault-id"
+   TABLE = "your-table-name"
+   COLUMN_NAME = "email"  # or other column
+   ```
 
-df = spark.table("users")
-df_tokenized = df.withColumn("email_token", skyflow_tokenize(col("email")))
-```
+3. **Run cells 1-3** to register UDFs
 
-**SQL:**
+4. **Use immediately** in SQL or Python:
+   ```python
+   # Python
+   df_tokenized = df.withColumn("email_token", skyflow_tokenize(col("email")))
+
+   # SQL
+   spark.sql("SELECT skyflow_tokenize(email) as token FROM users")
+   ```
+
+**Note:** Re-run registration cells after cluster restart.
+
+### Production Setup: Unity Catalog External Functions
+
+**Best for:** Production pipelines, team collaboration, persistent views
+
+1. **Import** `databricks_unity_catalog.ipynb` to Databricks
+
+2. **Configure cell 1** with your credentials:
+   ```python
+   CATALOG = "your_catalog"
+   SCHEMA = "your_schema"
+   LAMBDA_URL = "https://YOUR_API_ID.execute-api.YOUR_REGION.amazonaws.com"
+   CLUSTER_ID = "your-cluster-id"
+   VAULT_ID = "your-vault-id"
+   TABLE = "your_table_name"
+   ```
+
+3. **Run cells 1-3** to create the functions:
+   - Cell 1: Configuration
+   - Cell 2: Create tokenize function
+   - Cell 3: Create detokenize function
+
+4. **Continue with cells 4+** for usage examples and testing
+
+**That's it!** Functions are created and ready to use.
+
+#### Grant Permissions (Optional)
+
 ```sql
-SELECT skyflow_tokenize(email) as token FROM users;
+GRANT EXECUTE ON FUNCTION skyflow_tokenize TO `data_engineers`;
+GRANT EXECUTE ON FUNCTION skyflow_detokenize TO `data_engineers`;
 ```
+
+#### Usage
+
+```sql
+-- Simple function calls with embedded cluster/vault configuration
+SELECT skyflow_tokenize(email, 'users', 'email') as token
+FROM users;
+
+SELECT skyflow_detokenize(token) as value
+FROM tokenized_data;
+```
+
+**Note:** Functions persist across cluster restarts and are available to all authorized users.
 
 ## Performance Tuning
 
@@ -146,22 +261,55 @@ For more details on the API format, see the [main README](../README.md).
 
 ## Troubleshooting
 
+### Common Issues (Both Approaches)
+
 **"Connection timeout"**
 - Increase timeout in the notebook: `timeout=30`
 - Increase Lambda timeout: Edit `deploy.sh` TIMEOUT variable and redeploy
+- Check network connectivity from Databricks to Lambda endpoint
 
 **"Null values not handled correctly"**
-- Both notebooks filter NULL values before API calls
-- NULLs in input remain NULL in output
-
-**"UDF not found in SQL"**
-- Ensure you ran `spark.udf.register("skyflow_detokenize", skyflow_detokenize)`
-- UDFs are session-scoped; re-register after cluster restart
+- Both approaches handle NULL values gracefully
+- NULLs in input remain NULL in output (no API call made)
 
 **"Rate limiting errors"**
-- Reduce batch size to make more frequent, smaller API calls
-- Increase Lambda reserved concurrency (AWS Console)
-- Add retry logic with exponential backoff
+- Lambda automatically batches requests (default: 25 records per API call)
+- Configure batching in `lambda/skyflow-config.json`
+- Increase Lambda reserved concurrency in AWS Console
+- Add retry logic with exponential backoff in notebooks
+
+### Temporary UDF Issues
+
+**"UDF not found in SQL"**
+- Ensure you ran `spark.udf.register("skyflow_tokenize", skyflow_tokenize)`
+- UDFs are session-scoped; re-register after cluster restart
+- Check cell execution order in notebook
+
+**"Cannot create persistent view with temporary UDF"**
+- Error: `INVALID_TEMP_OBJ_REFERENCE`
+- **Solution:** Use `CREATE OR REPLACE TEMP VIEW` instead of `CREATE VIEW`
+- Or migrate to Unity Catalog external functions for persistent views
+
+### Unity Catalog Issues
+
+**"Function not found"**
+- Verify setup script ran successfully: `SHOW FUNCTIONS LIKE 'skyflow*'`
+- Check catalog and schema: `USE CATALOG x; USE SCHEMA y;`
+- Ensure you have EXECUTE permission on the function
+
+**"Connection not found"**
+- Connection name must match in function definition
+- List connections: `SHOW CONNECTIONS`
+- Verify connection URL is correct
+
+**"Permission denied"**
+- Ask admin to grant: `GRANT EXECUTE ON FUNCTION skyflow_tokenize TO <user>`
+- Check Unity Catalog permissions in workspace settings
+
+**"Cannot access Lambda from Databricks"**
+- Verify API Gateway endpoint is public or use AWS PrivateLink
+- Check Databricks workspace network settings
+- Test connectivity: `curl https://your-api-id.execute-api.region.amazonaws.com/processDatabricks`
 
 ## Additional Resources
 

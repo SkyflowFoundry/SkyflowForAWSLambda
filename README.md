@@ -590,7 +590,7 @@ def skyflow_detokenize(tokens: pd.Series) -> pd.Series:
             "X-Skyflow-Vault-ID": VAULT_ID
         }
     )
-    # Map tokens to decrypted values
+    # Map tokens to detokenized values
     return pd.Series(results)
 ```
 

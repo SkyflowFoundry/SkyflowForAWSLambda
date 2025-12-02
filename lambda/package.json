@@ -16,6 +16,6 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "skyflow-node": "^2.0.0"
+    "skyflow-node": "^2.0.2"
   }
 }
