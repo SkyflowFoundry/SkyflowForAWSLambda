@@ -576,8 +576,37 @@ else
     echo "Snowflake route already exists"
 fi
 
+# Create Databricks route
+echo "Creating Databricks route..."
+
+# /processDatabricks route (same format as /process)
+DB_ROUTE_ID=$(aws apigatewayv2 get-routes --region "$REGION" --api-id "$API_ID" --query "Items[?RouteKey=='POST /processDatabricks'].RouteId" --output text)
+
+if [ -z "$DB_ROUTE_ID" ]; then
+    DB_INTEGRATION_ID=$(aws apigatewayv2 create-integration \
+        --region "$REGION" \
+        --api-id "$API_ID" \
+        --integration-type AWS_PROXY \
+        --integration-uri "$LAMBDA_ARN" \
+        --payload-format-version 2.0 \
+        --query 'IntegrationId' \
+        --output text)
+
+    aws apigatewayv2 create-route \
+        --region "$REGION" \
+        --api-id "$API_ID" \
+        --route-key "POST /processDatabricks" \
+        --target "integrations/${DB_INTEGRATION_ID}" \
+        --output text > /dev/null
+
+    echo "✓ Databricks route created"
+else
+    echo "Databricks route already exists"
+fi
+
 API_URL="https://${API_ID}.execute-api.${REGION}.amazonaws.com/process"
 SF_API_URL="https://${API_ID}.execute-api.${REGION}.amazonaws.com/processSnowflake"
+DB_API_URL="https://${API_ID}.execute-api.${REGION}.amazonaws.com/processDatabricks"
 
 echo -e "${GREEN}✓ API Gateway configured${NC}"
 echo ""
@@ -599,6 +628,10 @@ echo -e "  Operations (via X-Skyflow-Operation header): tokenize, detokenize, qu
 echo ""
 echo -e "${GREEN}Snowflake Endpoint:${NC}"
 echo -e "  POST ${SF_API_URL}"
+echo ""
+echo -e "${GREEN}Databricks Endpoint:${NC}"
+echo -e "  POST ${DB_API_URL}"
+echo -e "  (Uses same format as standard endpoint - see samples/databricks_*.py)"
 echo ""
 echo -e "${YELLOW}Test Examples:${NC}"
 echo ""

@@ -78,8 +78,52 @@ class SkyflowClient {
      */
     async tokenize(clusterId, vaultId, table, records, options = {}) {
         const columnNames = records.length > 0 ? Object.keys(records[0]) : [];
-        console.log(`Tokenize: cluster=${clusterId}, vault=${vaultId}, table=${table}, columns=[${columnNames.join(', ')}], count=${records.length}`);
+        const batchSize = this.batching?.tokenize?.batchSize || 25;
 
+        console.log(`Tokenize: cluster=${clusterId}, vault=${vaultId}, table=${table}, columns=[${columnNames.join(', ')}], count=${records.length}, batchSize=${batchSize}`);
+
+        // If records fit in one batch, process directly
+        if (records.length <= batchSize) {
+            return await this._tokenizeBatch(clusterId, vaultId, table, records, options);
+        }
+
+        // Split into batches and process
+        const batches = [];
+        for (let i = 0; i < records.length; i += batchSize) {
+            batches.push(records.slice(i, i + batchSize));
+        }
+
+        console.log(`Processing ${batches.length} batches...`);
+
+        // Process all batches
+        const results = [];
+        const errors = [];
+
+        for (let i = 0; i < batches.length; i++) {
+            try {
+                const batchResult = await this._tokenizeBatch(clusterId, vaultId, table, batches[i], options);
+                results.push(...(batchResult.data || []));
+                if (batchResult.errors) {
+                    errors.push(...batchResult.errors);
+                }
+            } catch (error) {
+                // If a batch fails, collect the error and continue
+                console.error(`Batch ${i + 1}/${batches.length} failed:`, error.message);
+                throw error; // Fail fast on batch error
+            }
+        }
+
+        return {
+            data: results,
+            errors: errors.length > 0 ? errors : null
+        };
+    }
+
+    /**
+     * Process a single batch of tokenization
+     * @private
+     */
+    async _tokenizeBatch(clusterId, vaultId, table, records, options = {}) {
         const client = this._getClient(clusterId, vaultId);
 
         const insertRequest = new InsertRequest(table, records);
@@ -136,8 +180,53 @@ class SkyflowClient {
      */
     async detokenize(clusterId, vaultId, tokens, options = {}) {
         const redactionType = options.redactionType;
-        console.log(`Detokenize: cluster=${clusterId}, vault=${vaultId}, count=${tokens.length}, redactionType=${redactionType || 'governance-controlled'}`);
+        const batchSize = this.batching?.detokenize?.batchSize || 25;
 
+        console.log(`Detokenize: cluster=${clusterId}, vault=${vaultId}, count=${tokens.length}, batchSize=${batchSize}, redactionType=${redactionType || 'governance-controlled'}`);
+
+        // If tokens fit in one batch, process directly
+        if (tokens.length <= batchSize) {
+            return await this._detokenizeBatch(clusterId, vaultId, tokens, options);
+        }
+
+        // Split into batches and process
+        const batches = [];
+        for (let i = 0; i < tokens.length; i += batchSize) {
+            batches.push(tokens.slice(i, i + batchSize));
+        }
+
+        console.log(`Processing ${batches.length} batches...`);
+
+        // Process all batches
+        const results = [];
+        const errors = [];
+
+        for (let i = 0; i < batches.length; i++) {
+            try {
+                const batchResult = await this._detokenizeBatch(clusterId, vaultId, batches[i], options);
+                results.push(...(batchResult.data || []));
+                if (batchResult.errors) {
+                    errors.push(...batchResult.errors);
+                }
+            } catch (error) {
+                // If a batch fails, collect the error and continue
+                console.error(`Batch ${i + 1}/${batches.length} failed:`, error.message);
+                throw error; // Fail fast on batch error
+            }
+        }
+
+        return {
+            data: results,
+            errors: errors.length > 0 ? errors : null
+        };
+    }
+
+    /**
+     * Process a single batch of detokenization
+     * @private
+     */
+    async _detokenizeBatch(clusterId, vaultId, tokens, options = {}) {
+        const redactionType = options.redactionType;
         const client = this._getClient(clusterId, vaultId);
 
         // Only set redactionType if explicitly provided, otherwise let Skyflow governance decide
@@ -239,8 +328,52 @@ class SkyflowClient {
      * @returns {Promise<Array>} Array of inserted records with tokens
      */
     async tokenizeByot(clusterId, vaultId, table, records) {
-        console.log(`Tokenize-BYOT: cluster=${clusterId}, vault=${vaultId}, table=${table}, count=${records.length}`);
+        const batchSize = this.batching?.tokenize?.batchSize || 25;
 
+        console.log(`Tokenize-BYOT: cluster=${clusterId}, vault=${vaultId}, table=${table}, count=${records.length}, batchSize=${batchSize}`);
+
+        // If records fit in one batch, process directly
+        if (records.length <= batchSize) {
+            return await this._tokenizeByotBatch(clusterId, vaultId, table, records);
+        }
+
+        // Split into batches and process
+        const batches = [];
+        for (let i = 0; i < records.length; i += batchSize) {
+            batches.push(records.slice(i, i + batchSize));
+        }
+
+        console.log(`Processing ${batches.length} batches...`);
+
+        // Process all batches
+        const results = [];
+        const errors = [];
+
+        for (let i = 0; i < batches.length; i++) {
+            try {
+                const batchResult = await this._tokenizeByotBatch(clusterId, vaultId, table, batches[i]);
+                results.push(...(batchResult.data || []));
+                if (batchResult.errors) {
+                    errors.push(...batchResult.errors);
+                }
+            } catch (error) {
+                // If a batch fails, collect the error and continue
+                console.error(`Batch ${i + 1}/${batches.length} failed:`, error.message);
+                throw error; // Fail fast on batch error
+            }
+        }
+
+        return {
+            data: results,
+            errors: errors.length > 0 ? errors : null
+        };
+    }
+
+    /**
+     * Process a single batch of tokenize-BYOT
+     * @private
+     */
+    async _tokenizeByotBatch(clusterId, vaultId, table, records) {
         const client = this._getClient(clusterId, vaultId);
 
         const insertData = records.map(record => record.fields);

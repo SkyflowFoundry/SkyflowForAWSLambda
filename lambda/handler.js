@@ -6,6 +6,7 @@
  *
  * Routes:
  * - /process - Standard REST API operations
+ * - /processDatabricks - Databricks-specific endpoint (same format as /process)
  * - /processSnowflake/* - Snowflake external function format
  */
 
