@@ -14,7 +14,7 @@ The integration uses **Unity Catalog Batch Python UDFs** with `PARAMETER STYLE P
 ## Architecture
 
 ```
-Databricks → Lambda (batched) → Skyflow (batched)
+Databricks → API Gateway '/processDatabricks' → Lambda (batched) → Skyflow (batched)
 ```
 
 - **Credentials:** Managed in Lambda (not in notebooks)
@@ -134,7 +134,7 @@ The UDFs automatically run in parallel across Spark partitions. For optimal perf
 
 ### Caching
 
-For repeated detokenization of the same tokens:
+Caching the DataFrame to avoid re-reading input:
 ```python
 df_cached = df.cache()
 df_result = df_cached.withColumn("value", skyflow_detokenize(col("token")))
