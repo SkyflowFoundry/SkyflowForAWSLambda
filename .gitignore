@@ -1,5 +1,5 @@
 # Credentials and sensitive config (DO NOT COMMIT)
-lambda/skyflow-config.json
+lambda/skyflow-config*.json
 lambda/config.json
 .env
 .env.*

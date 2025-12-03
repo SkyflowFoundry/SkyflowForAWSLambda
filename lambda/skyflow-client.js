@@ -16,32 +16,59 @@ class SkyflowClient {
         this.config = config;
         this.credentials = config.credentials;
         this.batching = config.batching || {};
+        this.staticContext = config.context || {};
 
-        // Cache SDK clients per cluster+vault ID for performance
+        // Cache SDK clients per cluster+vault+context for performance
         this.clients = {};
 
         console.log('SkyflowClient initialized', {
-            authType: this.credentials.apiKey ? 'API_KEY' : 'JWT'
+            authType: this.credentials.apiKey ? 'API_KEY' : 'JWT',
+            hasStaticContext: Object.keys(this.staticContext).length > 0
         });
     }
 
     /**
-     * Get or initialize SDK client for a specific cluster and vault
+     * Get or initialize SDK client for a specific cluster, vault, and context
+     * @param {string} clusterId - Skyflow cluster ID
+     * @param {string} vaultId - Skyflow vault ID
+     * @param {Object} dynamicContext - Request-specific context attributes (merged with static context)
      * @private
      */
-    _getClient(clusterId, vaultId) {
-        const clientKey = `${clusterId}:${vaultId}`;
+    _getClient(clusterId, vaultId, dynamicContext = {}) {
+        // Merge static context from config with dynamic context from request
+        // Dynamic context overrides static context
+        const mergedContext = { ...this.staticContext, ...dynamicContext };
+
+        // Include context in cache key to ensure proper isolation
+        const contextKey = Object.keys(mergedContext).length > 0
+            ? `:${JSON.stringify(mergedContext)}`
+            : '';
+        const clientKey = `${clusterId}:${vaultId}${contextKey}`;
 
         if (!this.clients[clientKey]) {
             let credentials;
             if (this.credentials.apiKey) {
+                // API Key auth - context not supported by SDK
                 credentials = {
                     apiKey: this.credentials.apiKey
                 };
+
+                if (Object.keys(mergedContext).length > 0) {
+                    console.warn('Warning: Context attributes are only supported with JWT authentication, not API Key auth. Context will be ignored.');
+                }
             } else {
+                // JWT auth - include context in credentials
                 credentials = {
                     credentialsString: JSON.stringify(this.credentials)
                 };
+
+                // Add context if present (SDK v2.0.2+ supports context object)
+                if (Object.keys(mergedContext).length > 0) {
+                    credentials.context = mergedContext;
+                    console.log('SDK client initialized with context', {
+                        contextKeys: Object.keys(mergedContext)
+                    });
+                }
             }
 
             const vaultConfig = {
@@ -74,9 +101,10 @@ class SkyflowClient {
      *                          - {upsert: "email"} - Upsert by single column (recommended)
      *                          - {upsert: ["email"]} - Array format (only first column used, SDK limitation)
      *                          Note: SDK only supports single-column upsert
+     * @param {Object} context - Optional request-specific context attributes (merged with static context)
      * @returns {Promise<Array>} Array of tokenized records with all columns
      */
-    async tokenize(clusterId, vaultId, table, records, options = {}) {
+    async tokenize(clusterId, vaultId, table, records, options = {}, context = {}) {
         const columnNames = records.length > 0 ? Object.keys(records[0]) : [];
         const batchSize = this.batching?.tokenize?.batchSize || 25;
 
@@ -84,7 +112,7 @@ class SkyflowClient {
 
         // If records fit in one batch, process directly
         if (records.length <= batchSize) {
-            return await this._tokenizeBatch(clusterId, vaultId, table, records, options);
+            return await this._tokenizeBatch(clusterId, vaultId, table, records, options, context);
         }
 
         // Split into batches and process
@@ -101,7 +129,7 @@ class SkyflowClient {
 
         for (let i = 0; i < batches.length; i++) {
             try {
-                const batchResult = await this._tokenizeBatch(clusterId, vaultId, table, batches[i], options);
+                const batchResult = await this._tokenizeBatch(clusterId, vaultId, table, batches[i], options, context);
                 results.push(...(batchResult.data || []));
                 if (batchResult.errors) {
                     errors.push(...batchResult.errors);
@@ -123,8 +151,8 @@ class SkyflowClient {
      * Process a single batch of tokenization
      * @private
      */
-    async _tokenizeBatch(clusterId, vaultId, table, records, options = {}) {
-        const client = this._getClient(clusterId, vaultId);
+    async _tokenizeBatch(clusterId, vaultId, table, records, options = {}, context = {}) {
+        const client = this._getClient(clusterId, vaultId, context);
 
         const insertRequest = new InsertRequest(table, records);
         const insertOptions = new InsertOptions();
@@ -176,9 +204,10 @@ class SkyflowClient {
      *                          - {redactionType: "REDACTED"} - Returns redacted data
      *                          - {redactionType: "DEFAULT"} - Uses default redaction
      *                          - Omit redactionType to let Skyflow's governance engine decide
+     * @param {Object} context - Optional request-specific context attributes (merged with static context)
      * @returns {Promise<Object>} Object with data array and errors array
      */
-    async detokenize(clusterId, vaultId, tokens, options = {}) {
+    async detokenize(clusterId, vaultId, tokens, options = {}, context = {}) {
         const redactionType = options.redactionType;
         const batchSize = this.batching?.detokenize?.batchSize || 25;
 
@@ -186,7 +215,7 @@ class SkyflowClient {
 
         // If tokens fit in one batch, process directly
         if (tokens.length <= batchSize) {
-            return await this._detokenizeBatch(clusterId, vaultId, tokens, options);
+            return await this._detokenizeBatch(clusterId, vaultId, tokens, options, context);
         }
 
         // Split into batches and process
@@ -203,7 +232,7 @@ class SkyflowClient {
 
         for (let i = 0; i < batches.length; i++) {
             try {
-                const batchResult = await this._detokenizeBatch(clusterId, vaultId, batches[i], options);
+                const batchResult = await this._detokenizeBatch(clusterId, vaultId, batches[i], options, context);
                 results.push(...(batchResult.data || []));
                 if (batchResult.errors) {
                     errors.push(...batchResult.errors);
@@ -225,9 +254,9 @@ class SkyflowClient {
      * Process a single batch of detokenization
      * @private
      */
-    async _detokenizeBatch(clusterId, vaultId, tokens, options = {}) {
+    async _detokenizeBatch(clusterId, vaultId, tokens, options = {}, context = {}) {
         const redactionType = options.redactionType;
-        const client = this._getClient(clusterId, vaultId);
+        const client = this._getClient(clusterId, vaultId, context);
 
         // Only set redactionType if explicitly provided, otherwise let Skyflow governance decide
         const detokenizeData = tokens.map(token => {
@@ -278,12 +307,13 @@ class SkyflowClient {
      * @param {string} clusterId - Skyflow cluster ID
      * @param {string} vaultId - Skyflow vault ID
      * @param {string} sqlQuery - SQL query string
+     * @param {Object} context - Optional request-specific context attributes (merged with static context)
      * @returns {Promise<Array>} Array of query results
      */
-    async query(clusterId, vaultId, sqlQuery) {
+    async query(clusterId, vaultId, sqlQuery, context = {}) {
         console.log(`Query: cluster=${clusterId}, vault=${vaultId}, query=${sqlQuery.substring(0, 100)}...`);
 
-        const client = this._getClient(clusterId, vaultId);
+        const client = this._getClient(clusterId, vaultId, context);
         const queryRequest = new QueryRequest(sqlQuery);
 
         try {
@@ -325,16 +355,17 @@ class SkyflowClient {
      * @param {string} table - Table name in vault
      * @param {Array} records - Array of record objects with 'fields' (values) and 'tokens' (custom tokens)
      *                          Example: [{fields: {email: "test@example.com"}, tokens: {email: "custom-token-123"}}]
+     * @param {Object} context - Optional request-specific context attributes (merged with static context)
      * @returns {Promise<Array>} Array of inserted records with tokens
      */
-    async tokenizeByot(clusterId, vaultId, table, records) {
+    async tokenizeByot(clusterId, vaultId, table, records, context = {}) {
         const batchSize = this.batching?.tokenize?.batchSize || 25;
 
         console.log(`Tokenize-BYOT: cluster=${clusterId}, vault=${vaultId}, table=${table}, count=${records.length}, batchSize=${batchSize}`);
 
         // If records fit in one batch, process directly
         if (records.length <= batchSize) {
-            return await this._tokenizeByotBatch(clusterId, vaultId, table, records);
+            return await this._tokenizeByotBatch(clusterId, vaultId, table, records, context);
         }
 
         // Split into batches and process
@@ -351,7 +382,7 @@ class SkyflowClient {
 
         for (let i = 0; i < batches.length; i++) {
             try {
-                const batchResult = await this._tokenizeByotBatch(clusterId, vaultId, table, batches[i]);
+                const batchResult = await this._tokenizeByotBatch(clusterId, vaultId, table, batches[i], context);
                 results.push(...(batchResult.data || []));
                 if (batchResult.errors) {
                     errors.push(...batchResult.errors);
@@ -373,8 +404,8 @@ class SkyflowClient {
      * Process a single batch of tokenize-BYOT
      * @private
      */
-    async _tokenizeByotBatch(clusterId, vaultId, table, records) {
-        const client = this._getClient(clusterId, vaultId);
+    async _tokenizeByotBatch(clusterId, vaultId, table, records, context = {}) {
+        const client = this._getClient(clusterId, vaultId, context);
 
         const insertData = records.map(record => record.fields);
         const tokens = records.map(record => record.tokens);

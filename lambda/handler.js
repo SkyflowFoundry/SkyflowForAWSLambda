@@ -14,7 +14,7 @@ const SkyflowClient = require('./skyflow-client');
 const config = require('./config');
 const { SkyflowError } = require('skyflow-node');
 const snowflakeHandler = require('./snowflake-handler');
-const { getHeader } = require('./utils/headers');
+const { getHeader, extractContextHeaders } = require('./utils/headers');
 
 // Singleton client instance (reused across warm invocations)
 let skyflowClient;
@@ -52,6 +52,9 @@ exports.handler = async (event, context) => {
         const vaultId = getHeader(headers, 'x-skyflow-vault-id');
         const table = getHeader(headers, 'x-skyflow-table');
 
+        // Extract context from X-Skyflow-Context-* headers
+        const context = extractContextHeaders(headers);
+
         if (!clusterId) {
             throw new Error('Missing required header: X-Skyflow-Cluster-ID');
         }
@@ -73,7 +76,8 @@ exports.handler = async (event, context) => {
                     vaultId,
                     table,
                     body.records,
-                    body.options || {}
+                    body.options || {},
+                    context
                 );
                 break;
 
@@ -83,7 +87,8 @@ exports.handler = async (event, context) => {
                     clusterId,
                     vaultId,
                     body.tokens,
-                    body.options || {}
+                    body.options || {},
+                    context
                 );
                 break;
 
@@ -92,7 +97,8 @@ exports.handler = async (event, context) => {
                 result = await skyflowClient.query(
                     clusterId,
                     vaultId,
-                    body.query
+                    body.query,
+                    context
                 );
                 break;
 
@@ -105,7 +111,8 @@ exports.handler = async (event, context) => {
                     clusterId,
                     vaultId,
                     table,
-                    body.records
+                    body.records,
+                    context
                 );
                 break;
 

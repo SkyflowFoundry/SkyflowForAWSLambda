@@ -50,7 +50,62 @@ function getHeaders(headers, names) {
     return result;
 }
 
+/**
+ * Extract all context headers (X-Skyflow-Context-* pattern)
+ *
+ * Extracts all headers matching the X-Skyflow-Context-* pattern and returns
+ * them as a context object with camelCase keys.
+ *
+ * @param {Object} headers - The headers object from the Lambda event
+ * @param {string} prefix - The header prefix to match (default: 'x-skyflow-context-')
+ * @returns {Object} Object with context attributes
+ *
+ * @example
+ * const headers = {
+ *   'X-Skyflow-Context-User': 'john@example.com',
+ *   'X-Skyflow-Context-Role': 'admin',
+ *   'X-Skyflow-Context-IpAddress': '1.2.3.4',
+ *   'X-Skyflow-Operation': 'tokenize'  // ignored
+ * };
+ * extractContextHeaders(headers);
+ * // returns { user: 'john@example.com', role: 'admin', ipAddress: '1.2.3.4' }
+ *
+ * @example
+ * // Snowflake format with sf-custom- prefix
+ * const sfHeaders = {
+ *   'sf-custom-X-Skyflow-Context-User': 'john@example.com',
+ *   'sf-custom-X-Skyflow-Context-Role': 'admin'
+ * };
+ * extractContextHeaders(sfHeaders, 'sf-custom-x-skyflow-context-');
+ * // returns { user: 'john@example.com', role: 'admin' }
+ */
+function extractContextHeaders(headers, prefix = 'x-skyflow-context-') {
+    if (!headers || typeof headers !== 'object') {
+        return {};
+    }
+
+    const context = {};
+    const lowerPrefix = prefix.toLowerCase();
+
+    for (const [key, value] of Object.entries(headers)) {
+        const lowerKey = key.toLowerCase();
+
+        if (lowerKey.startsWith(lowerPrefix)) {
+            // Extract the attribute name after the prefix
+            const attrName = key.substring(prefix.length);
+
+            // Convert to camelCase (e.g., "IpAddress" -> "ipAddress")
+            const camelCaseKey = attrName.charAt(0).toLowerCase() + attrName.slice(1);
+
+            context[camelCaseKey] = value;
+        }
+    }
+
+    return context;
+}
+
 module.exports = {
     getHeader,
-    getHeaders
+    getHeaders,
+    extractContextHeaders
 };

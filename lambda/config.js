@@ -11,6 +11,41 @@
 const fs = require('fs');
 const path = require('path');
 
+/**
+ * Extract context attributes from environment variables
+ * Looks for SKYFLOW_CONTEXT_* pattern and converts to camelCase keys
+ *
+ * @returns {Object} Context object with camelCase keys
+ *
+ * @example
+ * // Environment variables:
+ * // SKYFLOW_CONTEXT_SOURCE=lambda
+ * // SKYFLOW_CONTEXT_FUNCTION_NAME=my-function
+ * extractContextFromEnv();
+ * // returns { source: 'lambda', functionName: 'my-function' }
+ */
+function extractContextFromEnv() {
+    const context = {};
+    const prefix = 'SKYFLOW_CONTEXT_';
+
+    for (const [key, value] of Object.entries(process.env)) {
+        if (key.startsWith(prefix)) {
+            // Extract the attribute name after the prefix
+            const attrName = key.substring(prefix.length);
+
+            // Convert UPPER_SNAKE_CASE to camelCase
+            // e.g., FUNCTION_NAME -> functionName, SOURCE -> source
+            const camelCaseKey = attrName
+                .toLowerCase()
+                .replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+
+            context[camelCaseKey] = value;
+        }
+    }
+
+    return context;
+}
+
 function loadConfig() {
     let config = {};
 
@@ -42,6 +77,9 @@ function loadConfig() {
             }
         };
 
+        // Extract static context from environment variables (SKYFLOW_CONTEXT_* pattern)
+        config.context = extractContextFromEnv();
+
     } else {
         console.log('Loading config from skyflow-config.json');
 
@@ -55,6 +93,7 @@ function loadConfig() {
 
         config.credentials = fileConfig.credentials;
         config.batching = fileConfig.batching || {};
+        config.context = fileConfig.context || {};
     }
 
     if (!config.credentials) {
@@ -75,7 +114,9 @@ function loadConfig() {
     }
 
     console.log('Configuration loaded successfully', {
-        authType: config.credentials.apiKey ? 'API_KEY' : 'JWT'
+        authType: config.credentials.apiKey ? 'API_KEY' : 'JWT',
+        hasContext: Object.keys(config.context || {}).length > 0,
+        contextKeys: Object.keys(config.context || {})
     });
 
     return config;

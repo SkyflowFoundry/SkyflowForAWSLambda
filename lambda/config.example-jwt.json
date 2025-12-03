@@ -15,5 +15,10 @@
       "batchSize": 100,
       "maxConcurrency": 200
     }
+  },
+  "context": {
+    "source": "aws-lambda",
+    "functionName": "skyflow-api",
+    "version": "1.0.0"
   }
 }
