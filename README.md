@@ -547,71 +547,46 @@ curl -X POST https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnow
 
 ## Databricks Integration
 
-The `/processDatabricks` endpoint enables tokenization and detokenization directly within Databricks notebooks using Pandas UDFs.
+The `/processDatabricks` endpoint enables Skyflow tokenization and detokenization in Databricks using **Unity Catalog Batch Python UDFs**.
+
+### Architecture
+
+```
+Databricks → Lambda (batched) → Skyflow (batched)
+```
+
+- **Batching to Lambda**: Configurable (default 500 rows per call)
+- **Lambda to Skyflow**: Automatic internal batching at 25 rows per Skyflow API call
+- **Functions**: Persistent in Unity Catalog, governed and shareable
+- **Views**: Support for persistent views with automatic tokenization/detokenization
 
 ### Quick Start
 
-1. **Deploy the Lambda function** (see [Quick Start](#quick-start-end-to-end))
-2. **Copy a sample notebook** from the [samples/](samples/) directory:
-   - `databricks_skyflow_tokenize.py` - Tokenize sensitive data
-   - `databricks_skyflow_detokenize.py` - Detokenize tokens
-3. **Update the configuration** in the notebook:
-   ```python
-   LAMBDA_URL = "https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processDatabricks"
-   CLUSTER_ID = "your-cluster-id"
-   VAULT_ID   = "your-vault-id"
-   ```
-4. **Run the notebook** to register the UDF
-5. **Use the UDF** in your Spark SQL queries:
+1. **Deploy Lambda** (see [Quick Start](#quick-start-end-to-end))
+2. **Import notebook**: Upload `samples/databricks.ipynb` to Databricks
+3. **Configure credentials** in cell 1
+4. **Run cells 2-3** to create persistent Unity Catalog functions
+5. **Use in SQL**:
    ```sql
-   SELECT skyflow_tokenize(email) as token FROM users;
+   -- Tokenize
+   WITH prepared AS (
+     SELECT email, 'email' AS col FROM users
+   )
+   SELECT skyflow_tokenize_column(email, col) as token FROM prepared;
+
+   -- Detokenize
    SELECT skyflow_detokenize(token) as email FROM tokens;
    ```
 
-### How It Works
+### Complete Documentation
 
-The sample notebooks provide Pandas UDFs that:
-- Batch API requests (10,000 records per call by default)
-- Handle NULL values gracefully
-- Process data in parallel across Spark partitions
-- Use the standard `/process` API format
-
-**Example: Detokenization UDF**
-```python
-@pandas_udf("string")
-def skyflow_detokenize(tokens: pd.Series) -> pd.Series:
-    # Batch tokens and call Lambda API
-    resp = requests.post(
-        LAMBDA_URL,
-        json={"tokens": batch},
-        headers={
-            "X-Skyflow-Operation": "detokenize",
-            "X-Skyflow-Cluster-ID": CLUSTER_ID,
-            "X-Skyflow-Vault-ID": VAULT_ID
-        }
-    )
-    # Map tokens to detokenized values
-    return pd.Series(results)
-```
-
-### Performance Considerations
-
-- **Batch Size**: Default 10,000 records per API call. Adjust based on Lambda timeout (30s default) and record size.
-- **Parallelism**: Spark automatically distributes UDF calls across partitions
-- **Network Latency**: Keep Lambda in same region as Databricks workspace
-- **Warm Starts**: Lambda singleton pattern ensures fast response times
-
-### Sample Notebooks
-
-See the [samples/](samples/) directory for complete examples:
-- **databricks_skyflow_tokenize.py** - Tokenize sensitive columns (email, SSN, etc.)
-- **databricks_skyflow_detokenize.py** - Detokenize tokens to plaintext
-
-Both notebooks include:
-- Configurable batch size and timeout
-- NULL value handling
-- Error handling with detailed logging
-- Usage examples
+See **[samples/README.md](samples/README.md)** for complete Databricks integration guide including:
+- Detailed setup instructions
+- Derived column pattern (required for UC PARAMETER STYLE PANDAS)
+- Performance tuning and batch size configuration
+- Troubleshooting guide
+- Security best practices
+- Handler signature patterns
 
 ---
 
