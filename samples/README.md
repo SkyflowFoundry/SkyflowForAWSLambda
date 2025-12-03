@@ -13,13 +13,51 @@ The integration uses **Unity Catalog Batch Python UDFs** with `PARAMETER STYLE P
 
 ## Architecture
 
+### Data Flow
+
+```mermaid
+graph LR
+    A[Databricks<br/>Unity Catalog<br/>Batch Python UDF] -->|500 rows<br/>per call| B[API Gateway<br/>/processDatabricks]
+    B --> C[Lambda<br/>Handler]
+    C -->|Internal batching<br/>25 rows per call| D[Skyflow API]
+
+    style A fill:#1e88e5,stroke:#1565c0,color:#fff
+    style B fill:#43a047,stroke:#2e7d32,color:#fff
+    style C fill:#fb8c00,stroke:#ef6c00,color:#fff
+    style D fill:#8e24aa,stroke:#6a1b9a,color:#fff
 ```
-Databricks → API Gateway '/processDatabricks' → Lambda (batched) → Skyflow (batched)
+
+### Batching Strategy
+
+```mermaid
+sequenceDiagram
+    participant DB as Databricks<br/>(Spark Partition)
+    participant L as Lambda
+    participant S as Skyflow
+
+    Note over DB: BATCH_SIZE = 500
+    DB->>L: Batch 1 (500 records)
+
+    Note over L: Internal batching
+    L->>S: Sub-batch 1 (25 records)
+    S-->>L: Tokens 1-25
+    L->>S: Sub-batch 2 (25 records)
+    S-->>L: Tokens 26-50
+    L->>S: ... (20 total sub-batches)
+    S-->>L: Tokens 476-500
+
+    L-->>DB: All 500 tokens
+
+    Note over DB: Process next batch
+    DB->>L: Batch 2 (500 records)
 ```
+
+### Key Points
 
 - **Credentials:** Managed in Lambda (not in notebooks)
 - **Batching to Lambda:** Configurable (default 500 rows per call for high throughput)
 - **Lambda to Skyflow:** Automatic internal batching at 25 rows per Skyflow API call
+- **Parallelization:** Spark distributes across multiple partitions simultaneously
 - **Performance:** Optimal for high-volume tokenization (100K+ rows)
 
 ## Available Notebook
