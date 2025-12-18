@@ -113,10 +113,13 @@ curl -X POST https://your-api-url.amazonaws.com/process \
   -H "X-Skyflow-Cluster-ID: ebfc9bee4242" \
   -H "X-Skyflow-Vault-ID: ac7f4217c9e54fa7a6f4896c34f6964b" \
   -H "X-Skyflow-Table: users" \
+  -H "X-Skyflow-Env: PROD" \
   -d '{
     "records": [{"email": "test@example.com"}]
   }'
 ```
+
+**Note:** The `X-Skyflow-Env` header is optional and defaults to `PROD` if not provided. Use `DEV` for development/testing environments.
 
 ---
 
@@ -151,6 +154,10 @@ All requests require these headers:
 - `X-Skyflow-Vault-ID` - Your vault ID
 - `X-Skyflow-Table` - Table name (required for tokenize and tokenize-byot operations)
 
+### Optional Headers
+
+- `X-Skyflow-Env` - Skyflow environment (DEV or PROD, defaults to PROD)
+
 ---
 
 ## Examples
@@ -164,6 +171,7 @@ curl -X POST $API_URL \
   -H "X-Skyflow-Cluster-ID: ebfc9bee4242" \
   -H "X-Skyflow-Vault-ID: ac7f4217c9e54fa7a6f4896c34f6964b" \
   -H "X-Skyflow-Table: users" \
+  -H "X-Skyflow-Env: PROD" \
   -d '{
     "records": [
       {"email": "john@example.com"},
@@ -171,6 +179,10 @@ curl -X POST $API_URL \
     ]
   }'
 ```
+
+**Environment Options:**
+- `PROD` - Production environment (default if header omitted)
+- `DEV` - Development/testing environment
 
 **Response:**
 ```json
@@ -390,6 +402,7 @@ For example, if you define `'X-Skyflow-Operation' = 'tokenize'` in your function
 | `X-Skyflow-Operation` | `sf-custom-X-Skyflow-Operation` | Yes | Both | Operation to perform: "tokenize" or "detokenize" |
 | `X-Skyflow-Cluster-ID` | `sf-custom-X-Skyflow-Cluster-ID` | Yes | Both | Your Skyflow cluster ID |
 | `X-Skyflow-Vault-ID` | `sf-custom-X-Skyflow-Vault-ID` | Yes | Both | Your Skyflow vault ID |
+| `X-Skyflow-Env` | `sf-custom-X-Skyflow-Env` | No | Both | Skyflow environment: "DEV" or "PROD" (defaults to PROD) |
 | `X-Skyflow-Table` | `sf-custom-X-Skyflow-Table` | Yes | Tokenize only | Table name for storing data |
 | `X-Skyflow-Column-Name` | `sf-custom-X-Skyflow-Column-Name` | Yes | Tokenize only | Column name in the table (single-column operations only) |
 
@@ -408,6 +421,7 @@ CREATE OR REPLACE API INTEGRATION skyflow_api_integration
 #### 2. Create Tokenize Function
 
 ```sql
+-- Production tokenize function
 CREATE OR REPLACE EXTERNAL FUNCTION skyflow_tokenize(plaintext VARCHAR)
   RETURNS VARCHAR
   API_INTEGRATION = skyflow_api_integration
@@ -415,6 +429,21 @@ CREATE OR REPLACE EXTERNAL FUNCTION skyflow_tokenize(plaintext VARCHAR)
     'X-Skyflow-Operation' = 'tokenize',
     'X-Skyflow-Cluster-ID' = 'ebfc9bee4242',
     'X-Skyflow-Vault-ID' = 'ac7f4217c9e54fa7a6f4896c34f6964b',
+    'X-Skyflow-Env' = 'PROD',
+    'X-Skyflow-Table' = 'users',
+    'X-Skyflow-Column-Name' = 'email'
+  )
+  AS 'https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake';
+
+-- Development tokenize function (optional)
+CREATE OR REPLACE EXTERNAL FUNCTION skyflow_tokenize_dev(plaintext VARCHAR)
+  RETURNS VARCHAR
+  API_INTEGRATION = skyflow_api_integration
+  HEADERS = (
+    'X-Skyflow-Operation' = 'tokenize',
+    'X-Skyflow-Cluster-ID' = 'your-dev-cluster-id',
+    'X-Skyflow-Vault-ID' = 'your-dev-vault-id',
+    'X-Skyflow-Env' = 'DEV',
     'X-Skyflow-Table' = 'users',
     'X-Skyflow-Column-Name' = 'email'
   )
@@ -424,13 +453,27 @@ CREATE OR REPLACE EXTERNAL FUNCTION skyflow_tokenize(plaintext VARCHAR)
 #### 3. Create Detokenize Function
 
 ```sql
+-- Production detokenize function
 CREATE OR REPLACE EXTERNAL FUNCTION skyflow_detokenize(token VARCHAR)
   RETURNS VARCHAR
   API_INTEGRATION = skyflow_api_integration
   HEADERS = (
     'X-Skyflow-Operation' = 'detokenize',
     'X-Skyflow-Cluster-ID' = 'ebfc9bee4242',
-    'X-Skyflow-Vault-ID' = 'ac7f4217c9e54fa7a6f4896c34f6964b'
+    'X-Skyflow-Vault-ID' = 'ac7f4217c9e54fa7a6f4896c34f6964b',
+    'X-Skyflow-Env' = 'PROD'
+  )
+  AS 'https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake';
+
+-- Development detokenize function (optional)
+CREATE OR REPLACE EXTERNAL FUNCTION skyflow_detokenize_dev(token VARCHAR)
+  RETURNS VARCHAR
+  API_INTEGRATION = skyflow_api_integration
+  HEADERS = (
+    'X-Skyflow-Operation' = 'detokenize',
+    'X-Skyflow-Cluster-ID' = 'your-dev-cluster-id',
+    'X-Skyflow-Vault-ID' = 'your-dev-vault-id',
+    'X-Skyflow-Env' = 'DEV'
   )
   AS 'https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake';
 ```
@@ -488,13 +531,14 @@ WHERE created_date > '2024-01-01';
 
 Emulate a Snowflake request for testing (note the `sf-custom-` prefix that Snowflake adds):
 
-**Tokenize:**
+**Tokenize (Production):**
 ```bash
 curl -X POST https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake \
   -H "Content-Type: application/json" \
   -H "sf-custom-X-Skyflow-Operation: tokenize" \
   -H "sf-custom-X-Skyflow-Cluster-ID: ebfc9bee4242" \
   -H "sf-custom-X-Skyflow-Vault-ID: ac7f4217c9e54fa7a6f4896c34f6964b" \
+  -H "sf-custom-X-Skyflow-Env: PROD" \
   -H "sf-custom-X-Skyflow-Table: users" \
   -H "sf-custom-X-Skyflow-Column-Name: email" \
   -d '{"data":[[0,"john@example.com"],[1,"jane@example.com"]]}'
@@ -510,13 +554,14 @@ curl -X POST https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnow
 }
 ```
 
-**Detokenize:**
+**Detokenize (Development):**
 ```bash
 curl -X POST https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake \
   -H "Content-Type: application/json" \
   -H "sf-custom-X-Skyflow-Operation: detokenize" \
-  -H "sf-custom-X-Skyflow-Cluster-ID: ebfc9bee4242" \
-  -H "sf-custom-X-Skyflow-Vault-ID: ac7f4217c9e54fa7a6f4896c34f6964b" \
+  -H "sf-custom-X-Skyflow-Cluster-ID: your-dev-cluster-id" \
+  -H "sf-custom-X-Skyflow-Vault-ID: your-dev-vault-id" \
+  -H "sf-custom-X-Skyflow-Env: DEV" \
   -d '{"data":[[0,"tok_abc123xyz"],[1,"tok_def456abc"]]}'
 ```
 
