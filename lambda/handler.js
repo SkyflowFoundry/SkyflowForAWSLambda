@@ -51,6 +51,7 @@ exports.handler = async (event, context) => {
         const clusterId = getHeader(headers, 'x-skyflow-cluster-id');
         const vaultId = getHeader(headers, 'x-skyflow-vault-id');
         const table = getHeader(headers, 'x-skyflow-table');
+        const env = getHeader(headers, 'x-skyflow-env') || 'PROD';
 
         if (!clusterId) {
             throw new Error('Missing required header: X-Skyflow-Cluster-ID');
@@ -73,7 +74,8 @@ exports.handler = async (event, context) => {
                     vaultId,
                     table,
                     body.records,
-                    body.options || {}
+                    body.options || {},
+                    env
                 );
                 break;
 
@@ -83,7 +85,8 @@ exports.handler = async (event, context) => {
                     clusterId,
                     vaultId,
                     body.tokens,
-                    body.options || {}
+                    body.options || {},
+                    env
                 );
                 break;
 
@@ -92,7 +95,8 @@ exports.handler = async (event, context) => {
                 result = await skyflowClient.query(
                     clusterId,
                     vaultId,
-                    body.query
+                    body.query,
+                    env
                 );
                 break;
 
@@ -105,7 +109,8 @@ exports.handler = async (event, context) => {
                     clusterId,
                     vaultId,
                     table,
-                    body.records
+                    body.records,
+                    env
                 );
                 break;
 

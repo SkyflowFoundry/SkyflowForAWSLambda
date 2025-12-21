@@ -26,13 +26,21 @@ class SkyflowClient {
     }
 
     /**
-     * Get or initialize SDK client for a specific cluster and vault
+     * Get or initialize SDK client for a specific cluster, vault, and environment
      * @private
      */
-    _getClient(clusterId, vaultId) {
-        const clientKey = `${clusterId}:${vaultId}`;
+    _getClient(clusterId, vaultId, env = 'PROD') {
+        // Validate environment (only DEV and PROD are supported by Skyflow SDK)
+        const validEnvironments = ['DEV', 'PROD'];
+        if (!validEnvironments.includes(env)) {
+            throw new Error(`Invalid environment: ${env}. Must be one of: ${validEnvironments.join(', ')}`);
+        }
+
+        const clientKey = `${clusterId}:${vaultId}:${env}`;
 
         if (!this.clients[clientKey]) {
+            console.log(`Initializing Skyflow client: cluster=${clusterId}, vault=${vaultId}, env=${env}`);
+
             let credentials;
             if (this.credentials.apiKey) {
                 credentials = {
@@ -47,7 +55,7 @@ class SkyflowClient {
             const vaultConfig = {
                 vaultId: vaultId,
                 clusterId: clusterId,
-                env: 'PROD',
+                env: env,
                 credentials: credentials
             };
 
@@ -74,17 +82,18 @@ class SkyflowClient {
      *                          - {upsert: "email"} - Upsert by single column (recommended)
      *                          - {upsert: ["email"]} - Array format (only first column used, SDK limitation)
      *                          Note: SDK only supports single-column upsert
+     * @param {string} env - Skyflow environment (DEV or PROD), defaults to PROD
      * @returns {Promise<Array>} Array of tokenized records with all columns
      */
-    async tokenize(clusterId, vaultId, table, records, options = {}) {
+    async tokenize(clusterId, vaultId, table, records, options = {}, env = 'PROD') {
         const columnNames = records.length > 0 ? Object.keys(records[0]) : [];
         const batchSize = this.batching?.tokenize?.batchSize || 25;
 
-        console.log(`Tokenize: cluster=${clusterId}, vault=${vaultId}, table=${table}, columns=[${columnNames.join(', ')}], count=${records.length}, batchSize=${batchSize}`);
+        console.log(`Tokenize: cluster=${clusterId}, vault=${vaultId}, env=${env}, table=${table}, columns=[${columnNames.join(', ')}], count=${records.length}, batchSize=${batchSize}`);
 
         // If records fit in one batch, process directly
         if (records.length <= batchSize) {
-            return await this._tokenizeBatch(clusterId, vaultId, table, records, options);
+            return await this._tokenizeBatch(clusterId, vaultId, table, records, options, env);
         }
 
         // Split into batches and process
@@ -101,7 +110,7 @@ class SkyflowClient {
 
         for (let i = 0; i < batches.length; i++) {
             try {
-                const batchResult = await this._tokenizeBatch(clusterId, vaultId, table, batches[i], options);
+                const batchResult = await this._tokenizeBatch(clusterId, vaultId, table, batches[i], options, env);
                 results.push(...(batchResult.data || []));
                 if (batchResult.errors) {
                     errors.push(...batchResult.errors);
@@ -123,8 +132,8 @@ class SkyflowClient {
      * Process a single batch of tokenization
      * @private
      */
-    async _tokenizeBatch(clusterId, vaultId, table, records, options = {}) {
-        const client = this._getClient(clusterId, vaultId);
+    async _tokenizeBatch(clusterId, vaultId, table, records, options = {}, env = 'PROD') {
+        const client = this._getClient(clusterId, vaultId, env);
 
         const insertRequest = new InsertRequest(table, records);
         const insertOptions = new InsertOptions();
@@ -176,17 +185,18 @@ class SkyflowClient {
      *                          - {redactionType: "REDACTED"} - Returns redacted data
      *                          - {redactionType: "DEFAULT"} - Uses default redaction
      *                          - Omit redactionType to let Skyflow's governance engine decide
+     * @param {string} env - Skyflow environment (DEV or PROD), defaults to PROD
      * @returns {Promise<Object>} Object with data array and errors array
      */
-    async detokenize(clusterId, vaultId, tokens, options = {}) {
+    async detokenize(clusterId, vaultId, tokens, options = {}, env = 'PROD') {
         const redactionType = options.redactionType;
         const batchSize = this.batching?.detokenize?.batchSize || 25;
 
-        console.log(`Detokenize: cluster=${clusterId}, vault=${vaultId}, count=${tokens.length}, batchSize=${batchSize}, redactionType=${redactionType || 'governance-controlled'}`);
+        console.log(`Detokenize: cluster=${clusterId}, vault=${vaultId}, env=${env}, count=${tokens.length}, batchSize=${batchSize}, redactionType=${redactionType || 'governance-controlled'}`);
 
         // If tokens fit in one batch, process directly
         if (tokens.length <= batchSize) {
-            return await this._detokenizeBatch(clusterId, vaultId, tokens, options);
+            return await this._detokenizeBatch(clusterId, vaultId, tokens, options, env);
         }
 
         // Split into batches and process
@@ -203,7 +213,7 @@ class SkyflowClient {
 
         for (let i = 0; i < batches.length; i++) {
             try {
-                const batchResult = await this._detokenizeBatch(clusterId, vaultId, batches[i], options);
+                const batchResult = await this._detokenizeBatch(clusterId, vaultId, batches[i], options, env);
                 results.push(...(batchResult.data || []));
                 if (batchResult.errors) {
                     errors.push(...batchResult.errors);
@@ -225,9 +235,9 @@ class SkyflowClient {
      * Process a single batch of detokenization
      * @private
      */
-    async _detokenizeBatch(clusterId, vaultId, tokens, options = {}) {
+    async _detokenizeBatch(clusterId, vaultId, tokens, options = {}, env = 'PROD') {
         const redactionType = options.redactionType;
-        const client = this._getClient(clusterId, vaultId);
+        const client = this._getClient(clusterId, vaultId, env);
 
         // Only set redactionType if explicitly provided, otherwise let Skyflow governance decide
         const detokenizeData = tokens.map(token => {
@@ -278,12 +288,13 @@ class SkyflowClient {
      * @param {string} clusterId - Skyflow cluster ID
      * @param {string} vaultId - Skyflow vault ID
      * @param {string} sqlQuery - SQL query string
+     * @param {string} env - Skyflow environment (DEV or PROD), defaults to PROD
      * @returns {Promise<Array>} Array of query results
      */
-    async query(clusterId, vaultId, sqlQuery) {
-        console.log(`Query: cluster=${clusterId}, vault=${vaultId}, query=${sqlQuery.substring(0, 100)}...`);
+    async query(clusterId, vaultId, sqlQuery, env = 'PROD') {
+        console.log(`Query: cluster=${clusterId}, vault=${vaultId}, env=${env}, query=${sqlQuery.substring(0, 100)}...`);
 
-        const client = this._getClient(clusterId, vaultId);
+        const client = this._getClient(clusterId, vaultId, env);
         const queryRequest = new QueryRequest(sqlQuery);
 
         try {
@@ -325,16 +336,17 @@ class SkyflowClient {
      * @param {string} table - Table name in vault
      * @param {Array} records - Array of record objects with 'fields' (values) and 'tokens' (custom tokens)
      *                          Example: [{fields: {email: "test@example.com"}, tokens: {email: "custom-token-123"}}]
+     * @param {string} env - Skyflow environment (DEV or PROD), defaults to PROD
      * @returns {Promise<Array>} Array of inserted records with tokens
      */
-    async tokenizeByot(clusterId, vaultId, table, records) {
+    async tokenizeByot(clusterId, vaultId, table, records, env = 'PROD') {
         const batchSize = this.batching?.tokenize?.batchSize || 25;
 
-        console.log(`Tokenize-BYOT: cluster=${clusterId}, vault=${vaultId}, table=${table}, count=${records.length}, batchSize=${batchSize}`);
+        console.log(`Tokenize-BYOT: cluster=${clusterId}, vault=${vaultId}, env=${env}, table=${table}, count=${records.length}, batchSize=${batchSize}`);
 
         // If records fit in one batch, process directly
         if (records.length <= batchSize) {
-            return await this._tokenizeByotBatch(clusterId, vaultId, table, records);
+            return await this._tokenizeByotBatch(clusterId, vaultId, table, records, env);
         }
 
         // Split into batches and process
@@ -351,7 +363,7 @@ class SkyflowClient {
 
         for (let i = 0; i < batches.length; i++) {
             try {
-                const batchResult = await this._tokenizeByotBatch(clusterId, vaultId, table, batches[i]);
+                const batchResult = await this._tokenizeByotBatch(clusterId, vaultId, table, batches[i], env);
                 results.push(...(batchResult.data || []));
                 if (batchResult.errors) {
                     errors.push(...batchResult.errors);
@@ -373,8 +385,8 @@ class SkyflowClient {
      * Process a single batch of tokenize-BYOT
      * @private
      */
-    async _tokenizeByotBatch(clusterId, vaultId, table, records) {
-        const client = this._getClient(clusterId, vaultId);
+    async _tokenizeByotBatch(clusterId, vaultId, table, records, env = 'PROD') {
+        const client = this._getClient(clusterId, vaultId, env);
 
         const insertData = records.map(record => record.fields);
         const tokens = records.map(record => record.tokens);

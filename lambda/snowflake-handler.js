@@ -13,6 +13,7 @@
  * - X-Skyflow-Operation (required) - "tokenize" or "detokenize"
  * - X-Skyflow-Cluster-ID (required)
  * - X-Skyflow-Vault-ID (required)
+ * - X-Skyflow-Env (optional) - "DEV" or "PROD" (defaults to PROD)
  * - X-Skyflow-Table (required for tokenize)
  * - X-Skyflow-Column-Name (required for tokenize)
  *
@@ -141,7 +142,7 @@ exports.handler = async (event, context) => {
  * Converts plaintext values to tokens
  */
 async function handleTokenize(rows, requestConfig, client) {
-    const { clusterId, vaultId, table, columnName } = requestConfig;
+    const { clusterId, vaultId, table, columnName, env } = requestConfig;
 
     if (!table) {
         throw new Error('Missing required header: X-Skyflow-Table (required for tokenize)');
@@ -150,7 +151,7 @@ async function handleTokenize(rows, requestConfig, client) {
         throw new Error('Missing required header: X-Skyflow-Column-Name (required for tokenize)');
     }
 
-    console.log(`Tokenize: cluster=${clusterId}, vault=${vaultId}, table=${table}, column=${columnName}, count=${rows.length}`);
+    console.log(`Tokenize: cluster=${clusterId}, vault=${vaultId}, env=${env}, table=${table}, column=${columnName}, count=${rows.length}`);
 
     // Extract row numbers and values
     const rowNumbers = rows.map(row => row[0]);
@@ -160,7 +161,7 @@ async function handleTokenize(rows, requestConfig, client) {
     const records = values.map(val => ({ [columnName]: val }));
 
     // Call Skyflow tokenize
-    const response = await client.tokenize(clusterId, vaultId, table, records, {});
+    const response = await client.tokenize(clusterId, vaultId, table, records, {}, env);
 
     // Extract tokens from response (Skyflow preserves order)
     const tokens = response.data.map(record => record[columnName]);
@@ -174,16 +175,16 @@ async function handleTokenize(rows, requestConfig, client) {
  * Converts tokens to plaintext values
  */
 async function handleDetokenize(rows, requestConfig, client) {
-    const { clusterId, vaultId } = requestConfig;
+    const { clusterId, vaultId, env } = requestConfig;
 
-    console.log(`Detokenize: cluster=${clusterId}, vault=${vaultId}, count=${rows.length}`);
+    console.log(`Detokenize: cluster=${clusterId}, vault=${vaultId}, env=${env}, count=${rows.length}`);
 
     // Extract row numbers and tokens
     const rowNumbers = rows.map(row => row[0]);
     const tokens = rows.map(row => row[1]);
 
     // Call Skyflow detokenize
-    const response = await client.detokenize(clusterId, vaultId, tokens, {});
+    const response = await client.detokenize(clusterId, vaultId, tokens, {}, env);
 
     // Extract plaintext values from response (Skyflow preserves order)
     const values = response.data.map(record => record.value);
@@ -204,6 +205,7 @@ function extractHeaders(headers) {
         operation: getHeader(headers, 'sf-custom-x-skyflow-operation'),
         clusterId: getHeader(headers, 'sf-custom-x-skyflow-cluster-id'),
         vaultId: getHeader(headers, 'sf-custom-x-skyflow-vault-id'),
+        env: getHeader(headers, 'sf-custom-x-skyflow-env') || 'PROD',
         table: getHeader(headers, 'sf-custom-x-skyflow-table'),
         columnName: getHeader(headers, 'sf-custom-x-skyflow-column-name')
     };
