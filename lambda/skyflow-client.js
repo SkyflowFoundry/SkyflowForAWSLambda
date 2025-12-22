@@ -30,7 +30,7 @@ class SkyflowClient {
      * @private
      */
     _getClient(clusterId, vaultId, env = 'PROD') {
-        // Validate environment (only SANDBOX and PROD are supported by Skyflow SDK)
+        // Validate environment
         const validEnvironments = ['SANDBOX', 'PROD'];
         if (!validEnvironments.includes(env)) {
             throw new Error(`Invalid environment: ${env}. Must be one of: ${validEnvironments.join(', ')}`);
