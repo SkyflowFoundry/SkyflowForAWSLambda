@@ -13,7 +13,7 @@
  * - X-Skyflow-Operation (required) - "tokenize" or "detokenize"
  * - X-Skyflow-Cluster-ID (required)
  * - X-Skyflow-Vault-ID (required)
- * - X-Skyflow-Env (optional) - "DEV" or "PROD" (defaults to PROD)
+ * - X-Skyflow-Env (optional) - "SANDBOX" or "PROD" (defaults to PROD)
  * - X-Skyflow-Table (required for tokenize)
  * - X-Skyflow-Column-Name (required for tokenize)
  *

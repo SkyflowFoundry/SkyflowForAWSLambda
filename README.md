@@ -119,7 +119,7 @@ curl -X POST https://your-api-url.amazonaws.com/process \
   }'
 ```
 
-**Note:** The `X-Skyflow-Env` header is optional and defaults to `PROD` if not provided. Use `DEV` for development/testing environments.
+**Note:** The `X-Skyflow-Env` header is optional and defaults to `PROD` if not provided. Use `SANDBOX` for development/testing environments.
 
 ---
 
@@ -156,7 +156,7 @@ All requests require these headers:
 
 ### Optional Headers
 
-- `X-Skyflow-Env` - Skyflow environment (DEV or PROD, defaults to PROD)
+- `X-Skyflow-Env` - Skyflow environment (SANDBOX or PROD, defaults to PROD)
 
 ---
 
@@ -182,7 +182,7 @@ curl -X POST $API_URL \
 
 **Environment Options:**
 - `PROD` - Production environment (default if header omitted)
-- `DEV` - Development/testing environment
+- `SANDBOX` - Development/testing environment
 
 **Response:**
 ```json
@@ -402,7 +402,7 @@ For example, if you define `'X-Skyflow-Operation' = 'tokenize'` in your function
 | `X-Skyflow-Operation` | `sf-custom-X-Skyflow-Operation` | Yes | Both | Operation to perform: "tokenize" or "detokenize" |
 | `X-Skyflow-Cluster-ID` | `sf-custom-X-Skyflow-Cluster-ID` | Yes | Both | Your Skyflow cluster ID |
 | `X-Skyflow-Vault-ID` | `sf-custom-X-Skyflow-Vault-ID` | Yes | Both | Your Skyflow vault ID |
-| `X-Skyflow-Env` | `sf-custom-X-Skyflow-Env` | No | Both | Skyflow environment: "DEV" or "PROD" (defaults to PROD) |
+| `X-Skyflow-Env` | `sf-custom-X-Skyflow-Env` | No | Both | Skyflow environment: "SANDBOX" or "PROD" (defaults to PROD) |
 | `X-Skyflow-Table` | `sf-custom-X-Skyflow-Table` | Yes | Tokenize only | Table name for storing data |
 | `X-Skyflow-Column-Name` | `sf-custom-X-Skyflow-Column-Name` | Yes | Tokenize only | Column name in the table (single-column operations only) |
 
@@ -435,15 +435,15 @@ CREATE OR REPLACE EXTERNAL FUNCTION skyflow_tokenize(plaintext VARCHAR)
   )
   AS 'https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake';
 
--- Development tokenize function (optional)
-CREATE OR REPLACE EXTERNAL FUNCTION skyflow_tokenize_dev(plaintext VARCHAR)
+-- Sandbox tokenize function (optional)
+CREATE OR REPLACE EXTERNAL FUNCTION skyflow_tokenize_sandbox(plaintext VARCHAR)
   RETURNS VARCHAR
   API_INTEGRATION = skyflow_api_integration
   HEADERS = (
     'X-Skyflow-Operation' = 'tokenize',
-    'X-Skyflow-Cluster-ID' = 'your-dev-cluster-id',
-    'X-Skyflow-Vault-ID' = 'your-dev-vault-id',
-    'X-Skyflow-Env' = 'DEV',
+    'X-Skyflow-Cluster-ID' = 'your-sandbox-cluster-id',
+    'X-Skyflow-Vault-ID' = 'your-sandbox-vault-id',
+    'X-Skyflow-Env' = 'SANDBOX',
     'X-Skyflow-Table' = 'users',
     'X-Skyflow-Column-Name' = 'email'
   )
@@ -465,15 +465,15 @@ CREATE OR REPLACE EXTERNAL FUNCTION skyflow_detokenize(token VARCHAR)
   )
   AS 'https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake';
 
--- Development detokenize function (optional)
-CREATE OR REPLACE EXTERNAL FUNCTION skyflow_detokenize_dev(token VARCHAR)
+-- Sandbox detokenize function (optional)
+CREATE OR REPLACE EXTERNAL FUNCTION skyflow_detokenize_sandbox(token VARCHAR)
   RETURNS VARCHAR
   API_INTEGRATION = skyflow_api_integration
   HEADERS = (
     'X-Skyflow-Operation' = 'detokenize',
-    'X-Skyflow-Cluster-ID' = 'your-dev-cluster-id',
-    'X-Skyflow-Vault-ID' = 'your-dev-vault-id',
-    'X-Skyflow-Env' = 'DEV'
+    'X-Skyflow-Cluster-ID' = 'your-sandbox-cluster-id',
+    'X-Skyflow-Vault-ID' = 'your-sandbox-vault-id',
+    'X-Skyflow-Env' = 'SANDBOX'
   )
   AS 'https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake';
 ```
@@ -554,14 +554,14 @@ curl -X POST https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnow
 }
 ```
 
-**Detokenize (Development):**
+**Detokenize (Sandbox):**
 ```bash
 curl -X POST https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/processSnowflake \
   -H "Content-Type: application/json" \
   -H "sf-custom-X-Skyflow-Operation: detokenize" \
-  -H "sf-custom-X-Skyflow-Cluster-ID: your-dev-cluster-id" \
-  -H "sf-custom-X-Skyflow-Vault-ID: your-dev-vault-id" \
-  -H "sf-custom-X-Skyflow-Env: DEV" \
+  -H "sf-custom-X-Skyflow-Cluster-ID: your-sandbox-cluster-id" \
+  -H "sf-custom-X-Skyflow-Vault-ID: your-sandbox-vault-id" \
+  -H "sf-custom-X-Skyflow-Env: SANDBOX" \
   -d '{"data":[[0,"tok_abc123xyz"],[1,"tok_def456abc"]]}'
 ```
 
