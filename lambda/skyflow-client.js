@@ -30,8 +30,8 @@ class SkyflowClient {
      * @private
      */
     _getClient(clusterId, vaultId, env = 'PROD') {
-        // Validate environment (only DEV and PROD are supported by Skyflow SDK)
-        const validEnvironments = ['DEV', 'PROD'];
+        // Validate environment (only SANDBOX and PROD are supported by Skyflow SDK)
+        const validEnvironments = ['SANDBOX', 'PROD'];
         if (!validEnvironments.includes(env)) {
             throw new Error(`Invalid environment: ${env}. Must be one of: ${validEnvironments.join(', ')}`);
         }
@@ -82,7 +82,7 @@ class SkyflowClient {
      *                          - {upsert: "email"} - Upsert by single column (recommended)
      *                          - {upsert: ["email"]} - Array format (only first column used, SDK limitation)
      *                          Note: SDK only supports single-column upsert
-     * @param {string} env - Skyflow environment (DEV or PROD), defaults to PROD
+     * @param {string} env - Skyflow environment (SANDBOX or PROD), defaults to PROD
      * @returns {Promise<Array>} Array of tokenized records with all columns
      */
     async tokenize(clusterId, vaultId, table, records, options = {}, env = 'PROD') {
@@ -185,7 +185,7 @@ class SkyflowClient {
      *                          - {redactionType: "REDACTED"} - Returns redacted data
      *                          - {redactionType: "DEFAULT"} - Uses default redaction
      *                          - Omit redactionType to let Skyflow's governance engine decide
-     * @param {string} env - Skyflow environment (DEV or PROD), defaults to PROD
+     * @param {string} env - Skyflow environment (SANDBOX or PROD), defaults to PROD
      * @returns {Promise<Object>} Object with data array and errors array
      */
     async detokenize(clusterId, vaultId, tokens, options = {}, env = 'PROD') {
@@ -288,7 +288,7 @@ class SkyflowClient {
      * @param {string} clusterId - Skyflow cluster ID
      * @param {string} vaultId - Skyflow vault ID
      * @param {string} sqlQuery - SQL query string
-     * @param {string} env - Skyflow environment (DEV or PROD), defaults to PROD
+     * @param {string} env - Skyflow environment (SANDBOX or PROD), defaults to PROD
      * @returns {Promise<Array>} Array of query results
      */
     async query(clusterId, vaultId, sqlQuery, env = 'PROD') {
@@ -336,7 +336,7 @@ class SkyflowClient {
      * @param {string} table - Table name in vault
      * @param {Array} records - Array of record objects with 'fields' (values) and 'tokens' (custom tokens)
      *                          Example: [{fields: {email: "test@example.com"}, tokens: {email: "custom-token-123"}}]
-     * @param {string} env - Skyflow environment (DEV or PROD), defaults to PROD
+     * @param {string} env - Skyflow environment (SANDBOX or PROD), defaults to PROD
      * @returns {Promise<Array>} Array of inserted records with tokens
      */
     async tokenizeByot(clusterId, vaultId, table, records, env = 'PROD') {
