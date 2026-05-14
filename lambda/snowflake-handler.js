@@ -82,9 +82,6 @@ exports.handler = async (event, awsContext) => {
         try {
             const bodyStr = event.body || '{}';
             console.log('Raw event.body type:', typeof bodyStr);
-            console.log('Raw event.body length:', String(bodyStr).length);
-            console.log('Raw event.body first 200 chars:', String(bodyStr).substring(0, 200));
-            console.log('Raw event.body (full):', bodyStr);
             body = parseRequestBody(event);
         } catch (parseError) {
             console.error('JSON parse error:', parseError.message);
