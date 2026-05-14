@@ -38,7 +38,7 @@ exports.handler = async (event, awsContext) => {
         path: event.path,
         remainingTimeMs: awsContext?.getRemainingTimeInMillis?.(),
         eventBodyType: typeof event.body,
-        eventBodyLength: event.body ? String(event.body).length : 0,
+        eventBodyLength: typeof event.body === 'string' || Buffer.isBuffer(event.body) ? event.body.length : 0,
         isBase64Encoded: event.isBase64Encoded === true
     });
 

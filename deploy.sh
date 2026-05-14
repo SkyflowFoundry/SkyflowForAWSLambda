@@ -368,6 +368,13 @@ TOKEN_URI="${TOKEN_URI:-$SKYFLOW_TOKEN_URI}"
 KEY_ID="${KEY_ID:-$SKYFLOW_KEY_ID}"
 PRIVATE_KEY="${PRIVATE_KEY:-$SKYFLOW_PRIVATE_KEY}"
 API_KEY="${API_KEY:-$SKYFLOW_API_KEY}"
+BEARER_TOKEN="${SKYFLOW_BEARER_TOKEN:-}"
+
+if [ -z "$API_KEY" ] && [[ "$BEARER_TOKEN" == sky-* ]]; then
+    echo -e "${YELLOW}Warning: SKYFLOW_BEARER_TOKEN appears to contain an API key; deploying it as SKYFLOW_API_KEY${NC}"
+    API_KEY="$BEARER_TOKEN"
+    BEARER_TOKEN=""
+fi
 
 if [ -n "$API_KEY" ] && [ -n "$CLIENT_ID" ]; then
     echo -e "${YELLOW}Warning: both API key and JWT credentials found; using API key${NC}"
@@ -409,11 +416,10 @@ elif [ -n "$CLIENT_ID" ]; then
                 "SKYFLOW_PRIVATE_KEY": $privateKey
             }
         }' > "$ENV_VARS_FILE"
-elif [ -n "$SKYFLOW_BEARER_TOKEN" ]; then
+elif [ -n "$BEARER_TOKEN" ]; then
     echo "  Using Bearer Token authentication"
-    echo -e "${YELLOW}  Note: Skyflow API keys should use SKYFLOW_API_KEY, not SKYFLOW_BEARER_TOKEN${NC}"
     jq -n \
-        --arg bearerToken "$SKYFLOW_BEARER_TOKEN" \
+        --arg bearerToken "$BEARER_TOKEN" \
         '{
             "Variables": {
                 "SKYFLOW_BEARER_TOKEN": $bearerToken

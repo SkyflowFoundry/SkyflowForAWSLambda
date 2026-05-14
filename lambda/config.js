@@ -34,11 +34,6 @@ function loadConfig() {
                 keyID: process.env.SKYFLOW_KEY_ID,
                 privateKey: process.env.SKYFLOW_PRIVATE_KEY
             };
-        } else if (process.env.SKYFLOW_BEARER_TOKEN?.startsWith('sky-')) {
-            console.warn('SKYFLOW_BEARER_TOKEN appears to contain an API key; using API key authentication');
-            config.credentials = {
-                apiKey: process.env.SKYFLOW_BEARER_TOKEN
-            };
         } else {
             config.credentials = {
                 token: process.env.SKYFLOW_BEARER_TOKEN
