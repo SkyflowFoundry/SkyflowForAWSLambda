@@ -23,19 +23,22 @@ let skyflowClient;
  * Main Lambda handler
  * Routes requests to appropriate Skyflow operations or Snowflake handler
  */
-exports.handler = async (event, context) => {
+exports.handler = async (event, awsContext) => {
     console.log('Request:', {
-        requestId: context.requestId,
-        functionName: context.functionName,
+        requestId: awsContext?.awsRequestId ?? awsContext?.requestId,
+        functionName: awsContext?.functionName,
         path: event.path || event.rawPath,
-        remainingTimeMs: context.getRemainingTimeInMillis()
+        remainingTimeMs: awsContext?.getRemainingTimeInMillis?.(),
+        eventBodyType: typeof event.body,
+        eventBodyFirst50: event.body ? String(event.body).substring(0, 50) : 'null'
     });
+    console.log('Full event keys:', Object.keys(event));
 
     try {
         // Route to Snowflake handler if path matches
         const path = event.path || event.rawPath || '';
         if (path.includes('/processSnowflake')) {
-            return await snowflakeHandler.handler(event, context);
+            return await snowflakeHandler.handler(event, awsContext);
         }
         // Initialize client on first invocation (singleton pattern)
         if (!skyflowClient) {

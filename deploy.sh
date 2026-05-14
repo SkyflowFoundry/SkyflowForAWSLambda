@@ -18,7 +18,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-FUNCTION_NAME="skyflow-lambda-api"
+FUNCTION_NAME="${FUNCTION_NAME:-skyflow-lambda-api}"
 REGION="${AWS_REGION:-us-east-1}"  # Can be overridden by --region flag
 RUNTIME="nodejs18.x"
 HANDLER="handler.handler"
@@ -80,6 +80,8 @@ show_help() {
     echo ""
     echo "Notes:"
     echo "  - The script automatically detects whether to create or update resources"
+    echo "  - Set FUNCTION_NAME to override the default Lambda name"
+    echo "  - Set AWS_PROFILE to use a specific AWS CLI profile"
     echo "  - Credentials from skyflow-config.json are converted to environment variables"
     echo "  - The config file is NOT included in the Lambda deployment package"
     echo ""
@@ -337,17 +339,21 @@ echo ""
 echo -e "${YELLOW}[2/5]${NC} Loading configuration..."
 cd lambda
 
-# Check if skyflow-config.json exists
-if [ ! -f "skyflow-config.json" ]; then
-    echo -e "${RED}Error: skyflow-config.json not found${NC}"
-    echo -e "${YELLOW}Please create lambda/skyflow-config.json with your Skyflow credentials${NC}"
+# Check if skyflow-config.json exists or Skyflow env vars are available
+if [ ! -f "skyflow-config.json" ] && [ -z "$SKYFLOW_API_KEY" ] && [ -z "$SKYFLOW_CLIENT_ID" ] && [ -z "$SKYFLOW_BEARER_TOKEN" ]; then
+    echo -e "${RED}Error: skyflow-config.json not found and no Skyflow env vars provided${NC}"
+    echo -e "${YELLOW}Please create lambda/skyflow-config.json with your Skyflow credentials or set SKYFLOW_API_KEY, SKYFLOW_CLIENT_ID, or SKYFLOW_BEARER_TOKEN in the environment${NC}"
     echo -e "${YELLOW}See lambda/config.example.json for format${NC}"
     exit 1
 fi
 
 # Detect authentication type
-CLIENT_ID=$(jq -r '.credentials.clientID // empty' skyflow-config.json)
-API_KEY=$(jq -r '.credentials.apiKey // empty' skyflow-config.json)
+CLIENT_ID=""
+API_KEY=""
+if [ -f "skyflow-config.json" ]; then
+    CLIENT_ID=$(jq -r '.credentials.clientID // empty' skyflow-config.json)
+    API_KEY=$(jq -r '.credentials.apiKey // empty' skyflow-config.json)
+fi
 
 # Create environment variables JSON file
 ENV_VARS_FILE="../lambda-env-vars.json"
@@ -380,8 +386,17 @@ elif [ -n "$API_KEY" ]; then
                 "SKYFLOW_API_KEY": $apiKey
             }
         }' > "$ENV_VARS_FILE"
+elif [ -n "$SKYFLOW_BEARER_TOKEN" ]; then
+    echo "  Using Bearer Token authentication"
+    jq -n \
+        --arg bearerToken "$SKYFLOW_BEARER_TOKEN" \
+        '{
+            "Variables": {
+                "SKYFLOW_BEARER_TOKEN": $bearerToken
+            }
+        }' > "$ENV_VARS_FILE"
 else
-    echo -e "${RED}Error: No valid credentials found in skyflow-config.json${NC}"
+    echo -e "${RED}Error: No valid credentials found in skyflow-config.json or environment variables${NC}"
     exit 1
 fi
 
