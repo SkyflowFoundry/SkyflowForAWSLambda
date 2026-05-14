@@ -5,6 +5,9 @@
  * 1. Environment variables (production)
  * 2. skyflow-config.json file (development)
  *
+ * Environment credential precedence: API key, JWT service account, bearer token.
+ * Bearer tokens are passed through as-is and are not refreshed by this Lambda.
+ *
  * Note: cluster_id is now provided in each API request headers, not in config
  */
 

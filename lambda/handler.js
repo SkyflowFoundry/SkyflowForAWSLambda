@@ -15,6 +15,7 @@ const config = require('./config');
 const { SkyflowError } = require('skyflow-node');
 const snowflakeHandler = require('./snowflake-handler');
 const { getHeader } = require('./utils/headers');
+const { parseRequestBody } = require('./utils/body');
 
 // Singleton client instance (reused across warm invocations)
 let skyflowClient;
@@ -30,7 +31,8 @@ exports.handler = async (event, awsContext) => {
         path: event.path || event.rawPath,
         remainingTimeMs: awsContext?.getRemainingTimeInMillis?.(),
         eventBodyType: typeof event.body,
-        eventBodyFirst50: event.body ? String(event.body).substring(0, 50) : 'null'
+        eventBodyLength: event.body ? String(event.body).length : 0,
+        isBase64Encoded: event.isBase64Encoded === true
     });
     console.log('Full event keys:', Object.keys(event));
 
@@ -46,7 +48,7 @@ exports.handler = async (event, awsContext) => {
         }
 
         // Parse request body
-        const body = JSON.parse(event.body || '{}');
+        const body = parseRequestBody(event);
 
         // Extract configuration from headers (case-insensitive)
         const headers = event.headers || {};

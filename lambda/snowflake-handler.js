@@ -24,33 +24,10 @@ const SkyflowClient = require('./skyflow-client');
 const config = require('./config');
 const { SkyflowError } = require('skyflow-node');
 const { getHeader } = require('./utils/headers');
-const zlib = require('zlib');
+const { parseRequestBody } = require('./utils/body');
 
 // Singleton client instance (reused across warm invocations)
 let skyflowClient;
-
-function parseRequestBody(event) {
-    if (event.body === undefined || event.body === null || event.body === '') {
-        return {};
-    }
-
-    if (typeof event.body !== 'string') {
-        return event.body;
-    }
-
-    const headers = event.headers || {};
-    const contentEncoding = (getHeader(headers, 'content-encoding') || '').toLowerCase();
-    let bodyBuffer = event.isBase64Encoded
-        ? Buffer.from(event.body, 'base64')
-        : Buffer.from(event.body, 'utf8');
-
-    const hasGzipHeader = bodyBuffer.length >= 2 && bodyBuffer[0] === 0x1f && bodyBuffer[1] === 0x8b;
-    if (contentEncoding.includes('gzip') || hasGzipHeader) {
-        bodyBuffer = zlib.gunzipSync(bodyBuffer);
-    }
-
-    return JSON.parse(bodyBuffer.toString('utf8'));
-}
 
 /**
  * Main Snowflake handler - routes to tokenize or detokenize
@@ -61,11 +38,10 @@ exports.handler = async (event, awsContext) => {
         path: event.path,
         remainingTimeMs: awsContext?.getRemainingTimeInMillis?.(),
         eventBodyType: typeof event.body,
-        eventBodyLength: event.body ? event.body.length : 0,
-        eventBodyFirst50: event.body ? String(event.body).substring(0, 50) : 'null'
+        eventBodyLength: event.body ? String(event.body).length : 0,
+        isBase64Encoded: event.isBase64Encoded === true
     });
     console.log('Full event keys:', Object.keys(event));
-    console.log('Full headers:', JSON.stringify(event.headers));
 
     try {
         // Initialize client on first invocation
@@ -81,12 +57,11 @@ exports.handler = async (event, awsContext) => {
         let body;
         try {
             const bodyStr = event.body || '{}';
-            console.log('Raw event.body type:', typeof bodyStr);
+            console.log('Request body type:', typeof bodyStr);
             body = parseRequestBody(event);
         } catch (parseError) {
             console.error('JSON parse error:', parseError.message);
             console.error('event.body type:', typeof event.body);
-            console.error('event.body:', event.body);
             throw new Error(`Failed to parse request body: ${parseError.message}`);
         }
         const rows = body.data || [];
@@ -249,5 +224,3 @@ function extractHeaders(headers) {
         columnName: getHeader(headers, 'sf-custom-x-skyflow-column-name')
     };
 }
-
-exports.parseRequestBody = parseRequestBody;
