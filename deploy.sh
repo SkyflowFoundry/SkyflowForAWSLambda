@@ -369,6 +369,10 @@ KEY_ID="${KEY_ID:-$SKYFLOW_KEY_ID}"
 PRIVATE_KEY="${PRIVATE_KEY:-$SKYFLOW_PRIVATE_KEY}"
 API_KEY="${API_KEY:-$SKYFLOW_API_KEY}"
 
+if [ -n "$API_KEY" ] && [ -n "$CLIENT_ID" ]; then
+    echo -e "${YELLOW}Warning: both API key and JWT credentials found; using API key${NC}"
+fi
+
 # Create environment variables JSON file
 ENV_VARS_FILE="../lambda-env-vars.json"
 

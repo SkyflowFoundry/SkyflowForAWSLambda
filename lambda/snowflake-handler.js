@@ -41,7 +41,6 @@ exports.handler = async (event, awsContext) => {
         eventBodyLength: event.body ? String(event.body).length : 0,
         isBase64Encoded: event.isBase64Encoded === true
     });
-    console.log('Full event keys:', Object.keys(event));
 
     try {
         // Initialize client on first invocation
@@ -54,16 +53,7 @@ exports.handler = async (event, awsContext) => {
         const requestConfig = extractHeaders(headers);
 
         // Parse request body (Snowflake format)
-        let body;
-        try {
-            const bodyStr = event.body || '{}';
-            console.log('Request body type:', typeof bodyStr);
-            body = parseRequestBody(event);
-        } catch (parseError) {
-            console.error('JSON parse error:', parseError.message);
-            console.error('event.body type:', typeof event.body);
-            throw new Error(`Failed to parse request body: ${parseError.message}`);
-        }
+        const body = parseRequestBody(event);
         const rows = body.data || [];
 
         if (!Array.isArray(rows) || rows.length === 0) {

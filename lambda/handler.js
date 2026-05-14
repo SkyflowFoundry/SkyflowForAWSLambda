@@ -34,7 +34,6 @@ exports.handler = async (event, awsContext) => {
         eventBodyLength: event.body ? String(event.body).length : 0,
         isBase64Encoded: event.isBase64Encoded === true
     });
-    console.log('Full event keys:', Object.keys(event));
 
     try {
         // Route to Snowflake handler if path matches
