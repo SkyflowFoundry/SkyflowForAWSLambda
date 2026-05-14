@@ -21,7 +21,7 @@ class SkyflowClient {
         this.clients = {};
 
         console.log('SkyflowClient initialized', {
-            authType: this.credentials.apiKey ? 'API_KEY' : 'JWT'
+            authType: this.credentials.apiKey ? 'API_KEY' : this.credentials.token ? 'TOKEN' : 'JWT'
         });
     }
 
@@ -45,6 +45,10 @@ class SkyflowClient {
             if (this.credentials.apiKey) {
                 credentials = {
                     apiKey: this.credentials.apiKey
+                };
+            } else if (this.credentials.token) {
+                credentials = {
+                    token: this.credentials.token
                 };
             } else {
                 credentials = {

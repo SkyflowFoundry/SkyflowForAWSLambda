@@ -24,6 +24,7 @@ const SkyflowClient = require('./skyflow-client');
 const config = require('./config');
 const { SkyflowError } = require('skyflow-node');
 const { getHeader } = require('./utils/headers');
+const { parseRequestBody } = require('./utils/body');
 
 // Singleton client instance (reused across warm invocations)
 let skyflowClient;
@@ -31,11 +32,14 @@ let skyflowClient;
 /**
  * Main Snowflake handler - routes to tokenize or detokenize
  */
-exports.handler = async (event, context) => {
+exports.handler = async (event, awsContext) => {
     console.log('Snowflake request:', {
-        requestId: context.requestId,
+        requestId: awsContext?.awsRequestId ?? awsContext?.requestId,
         path: event.path,
-        remainingTimeMs: context.getRemainingTimeInMillis()
+        remainingTimeMs: awsContext?.getRemainingTimeInMillis?.(),
+        eventBodyType: typeof event.body,
+        eventBodyLength: typeof event.body === 'string' || Buffer.isBuffer(event.body) ? event.body.length : 0,
+        isBase64Encoded: event.isBase64Encoded === true
     });
 
     try {
@@ -49,7 +53,7 @@ exports.handler = async (event, context) => {
         const requestConfig = extractHeaders(headers);
 
         // Parse request body (Snowflake format)
-        const body = JSON.parse(event.body || '{}');
+        const body = parseRequestBody(event);
         const rows = body.data || [];
 
         if (!Array.isArray(rows) || rows.length === 0) {

@@ -29,12 +29,14 @@ The `skyflow-client.js` module is intentionally designed as a **pure pass-throug
 
 ### Configuration Loading Priority
 Configuration is loaded via `config.js` with this priority:
-1. **Environment variables** (production - used when `SKYFLOW_API_KEY` or `SKYFLOW_CLIENT_ID` is set)
+1. **Environment variables** (production - used when `SKYFLOW_API_KEY`, `SKYFLOW_CLIENT_ID`, or `SKYFLOW_BEARER_TOKEN` is set)
 2. **skyflow-config.json file** (development - used as fallback)
+
+Environment credential precedence is API key, then JWT service account, then bearer token. `SKYFLOW_BEARER_TOKEN` is env-var only, is passed through as-is, and is not refreshed by this Lambda; prefer `SKYFLOW_API_KEY` or JWT service-account credentials for long-lived deployments.
 
 **Key Change:** Cluster ID is no longer stored in config. It's provided via headers in each API request, making the Lambda function agnostic to which Skyflow cluster is being targeted.
 
-The deploy script automatically converts `skyflow-config.json` to environment variables during deployment, so credentials are never packaged in the Lambda ZIP file.
+The deploy script automatically converts `skyflow-config.json` to environment variables during deployment, so credentials are never packaged in the Lambda ZIP file. Set `FUNCTION_NAME` to deploy to a Lambda name other than the default `skyflow-lambda-api`.
 
 ### Request Routing Pattern
 All endpoints use header-based configuration with `X-Skyflow-*` headers:
@@ -149,7 +151,7 @@ This creates:
 **Note:** `cluster_id` and `vault_id` are provided via headers in each API request, not in the config or payload.
 
 ### Production (AWS Lambda)
-Environment variables are automatically set by the deploy script from `skyflow-config.json`. The configuration file is excluded from the Lambda ZIP file for security.
+Environment variables are automatically set by the deploy script from `skyflow-config.json` or from existing shell environment variables. Supported credential env vars are `SKYFLOW_API_KEY`, the JWT service-account set (`SKYFLOW_CLIENT_ID`, `SKYFLOW_CLIENT_NAME`, `SKYFLOW_TOKEN_URI`, `SKYFLOW_KEY_ID`, `SKYFLOW_PRIVATE_KEY`), and env-only `SKYFLOW_BEARER_TOKEN`. The configuration file is excluded from the Lambda ZIP file for security.
 
 ## File Structure
 
@@ -164,7 +166,8 @@ lambda/
 ├── skyflow-config.json      # Local credentials (git-ignored)
 ├── package.json             # Dependencies (skyflow-node SDK)
 └── utils/
-    └── headers.js           # Shared header extraction utilities
+    ├── headers.js           # Shared header extraction utilities
+    └── body.js              # Shared base64/gzip request body parser
 
 samples/
 ├── databricks_skyflow_tokenize.py      # Databricks tokenization UDF

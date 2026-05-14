@@ -18,7 +18,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-FUNCTION_NAME="skyflow-lambda-api"
+FUNCTION_NAME="${FUNCTION_NAME:-skyflow-lambda-api}"
 REGION="${AWS_REGION:-us-east-1}"  # Can be overridden by --region flag
 RUNTIME="nodejs18.x"
 HANDLER="handler.handler"
@@ -80,6 +80,8 @@ show_help() {
     echo ""
     echo "Notes:"
     echo "  - The script automatically detects whether to create or update resources"
+    echo "  - Set FUNCTION_NAME to override the default Lambda name"
+    echo "  - Set AWS_PROFILE to use a specific AWS CLI profile"
     echo "  - Credentials from skyflow-config.json are converted to environment variables"
     echo "  - The config file is NOT included in the Lambda deployment package"
     echo ""
@@ -337,40 +339,51 @@ echo ""
 echo -e "${YELLOW}[2/5]${NC} Loading configuration..."
 cd lambda
 
-# Check if skyflow-config.json exists
-if [ ! -f "skyflow-config.json" ]; then
-    echo -e "${RED}Error: skyflow-config.json not found${NC}"
-    echo -e "${YELLOW}Please create lambda/skyflow-config.json with your Skyflow credentials${NC}"
+# Check if skyflow-config.json exists or Skyflow env vars are available
+if [ ! -f "skyflow-config.json" ] && [ -z "$SKYFLOW_API_KEY" ] && [ -z "$SKYFLOW_CLIENT_ID" ] && [ -z "$SKYFLOW_BEARER_TOKEN" ]; then
+    echo -e "${RED}Error: skyflow-config.json not found and no Skyflow env vars provided${NC}"
+    echo -e "${YELLOW}Please create lambda/skyflow-config.json with your Skyflow credentials or set SKYFLOW_API_KEY, SKYFLOW_CLIENT_ID, or SKYFLOW_BEARER_TOKEN in the environment${NC}"
     echo -e "${YELLOW}See lambda/config.example.json for format${NC}"
     exit 1
 fi
 
-# Detect authentication type
-CLIENT_ID=$(jq -r '.credentials.clientID // empty' skyflow-config.json)
-API_KEY=$(jq -r '.credentials.apiKey // empty' skyflow-config.json)
+# Detect authentication type. Precedence: API key, JWT service account, bearer token.
+CLIENT_ID=""
+CLIENT_NAME=""
+TOKEN_URI=""
+KEY_ID=""
+PRIVATE_KEY=""
+API_KEY=""
+if [ -f "skyflow-config.json" ]; then
+    CLIENT_ID=$(jq -r '.credentials.clientID // empty' skyflow-config.json)
+    CLIENT_NAME=$(jq -r '.credentials.clientName // empty' skyflow-config.json)
+    TOKEN_URI=$(jq -r '.credentials.tokenURI // empty' skyflow-config.json)
+    KEY_ID=$(jq -r '.credentials.keyID // empty' skyflow-config.json)
+    PRIVATE_KEY=$(jq -r '.credentials.privateKey // empty' skyflow-config.json)
+    API_KEY=$(jq -r '.credentials.apiKey // empty' skyflow-config.json)
+fi
+CLIENT_ID="${CLIENT_ID:-$SKYFLOW_CLIENT_ID}"
+CLIENT_NAME="${CLIENT_NAME:-$SKYFLOW_CLIENT_NAME}"
+TOKEN_URI="${TOKEN_URI:-$SKYFLOW_TOKEN_URI}"
+KEY_ID="${KEY_ID:-$SKYFLOW_KEY_ID}"
+PRIVATE_KEY="${PRIVATE_KEY:-$SKYFLOW_PRIVATE_KEY}"
+API_KEY="${API_KEY:-$SKYFLOW_API_KEY}"
+BEARER_TOKEN="${SKYFLOW_BEARER_TOKEN:-}"
+
+if [ -z "$API_KEY" ] && [[ "$BEARER_TOKEN" == sky-* ]]; then
+    echo -e "${YELLOW}Warning: SKYFLOW_BEARER_TOKEN appears to contain an API key; deploying it as SKYFLOW_API_KEY${NC}"
+    API_KEY="$BEARER_TOKEN"
+    BEARER_TOKEN=""
+fi
+
+if [ -n "$API_KEY" ] && [ -n "$CLIENT_ID" ]; then
+    echo -e "${YELLOW}Warning: both API key and JWT credentials found; using API key${NC}"
+fi
 
 # Create environment variables JSON file
 ENV_VARS_FILE="../lambda-env-vars.json"
 
-if [ -n "$CLIENT_ID" ]; then
-    # JWT (Service Account) authentication
-    echo "  Using JWT (Service Account) authentication"
-    jq -n \
-        --arg clientId "$(jq -r '.credentials.clientID' skyflow-config.json)" \
-        --arg clientName "$(jq -r '.credentials.clientName' skyflow-config.json)" \
-        --arg tokenUri "$(jq -r '.credentials.tokenURI' skyflow-config.json)" \
-        --arg keyId "$(jq -r '.credentials.keyID' skyflow-config.json)" \
-        --arg privateKey "$(jq -r '.credentials.privateKey' skyflow-config.json)" \
-        '{
-            "Variables": {
-                "SKYFLOW_CLIENT_ID": $clientId,
-                "SKYFLOW_CLIENT_NAME": $clientName,
-                "SKYFLOW_TOKEN_URI": $tokenUri,
-                "SKYFLOW_KEY_ID": $keyId,
-                "SKYFLOW_PRIVATE_KEY": $privateKey
-            }
-        }' > "$ENV_VARS_FILE"
-elif [ -n "$API_KEY" ]; then
+if [ -n "$API_KEY" ]; then
     # API Key authentication
     echo "  Using API Key authentication"
     jq -n \
@@ -380,8 +393,40 @@ elif [ -n "$API_KEY" ]; then
                 "SKYFLOW_API_KEY": $apiKey
             }
         }' > "$ENV_VARS_FILE"
+elif [ -n "$CLIENT_ID" ]; then
+    # JWT (Service Account) authentication
+    echo "  Using JWT (Service Account) authentication"
+    if [ -z "$CLIENT_NAME" ] || [ -z "$TOKEN_URI" ] || [ -z "$KEY_ID" ] || [ -z "$PRIVATE_KEY" ]; then
+        echo -e "${RED}Error: Missing one or more JWT credential fields${NC}"
+        echo -e "${YELLOW}Set SKYFLOW_CLIENT_ID, SKYFLOW_CLIENT_NAME, SKYFLOW_TOKEN_URI, SKYFLOW_KEY_ID, and SKYFLOW_PRIVATE_KEY or provide skyflow-config.json${NC}"
+        exit 1
+    fi
+    jq -n \
+        --arg clientId "$CLIENT_ID" \
+        --arg clientName "$CLIENT_NAME" \
+        --arg tokenUri "$TOKEN_URI" \
+        --arg keyId "$KEY_ID" \
+        --arg privateKey "$PRIVATE_KEY" \
+        '{
+            "Variables": {
+                "SKYFLOW_CLIENT_ID": $clientId,
+                "SKYFLOW_CLIENT_NAME": $clientName,
+                "SKYFLOW_TOKEN_URI": $tokenUri,
+                "SKYFLOW_KEY_ID": $keyId,
+                "SKYFLOW_PRIVATE_KEY": $privateKey
+            }
+        }' > "$ENV_VARS_FILE"
+elif [ -n "$BEARER_TOKEN" ]; then
+    echo "  Using Bearer Token authentication"
+    jq -n \
+        --arg bearerToken "$BEARER_TOKEN" \
+        '{
+            "Variables": {
+                "SKYFLOW_BEARER_TOKEN": $bearerToken
+            }
+        }' > "$ENV_VARS_FILE"
 else
-    echo -e "${RED}Error: No valid credentials found in skyflow-config.json${NC}"
+    echo -e "${RED}Error: No valid credentials found in skyflow-config.json or environment variables${NC}"
     exit 1
 fi
 

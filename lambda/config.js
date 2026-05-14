@@ -5,6 +5,9 @@
  * 1. Environment variables (production)
  * 2. skyflow-config.json file (development)
  *
+ * Environment credential precedence: API key, JWT service account, bearer token.
+ * Bearer tokens are passed through as-is and are not refreshed by this Lambda.
+ *
  * Note: cluster_id is now provided in each API request headers, not in config
  */
 
@@ -14,20 +17,26 @@ const path = require('path');
 function loadConfig() {
     let config = {};
 
-    if (process.env.SKYFLOW_API_KEY || process.env.SKYFLOW_CLIENT_ID) {
+    const hasEnvCredentials = process.env.SKYFLOW_API_KEY || process.env.SKYFLOW_CLIENT_ID || process.env.SKYFLOW_BEARER_TOKEN;
+
+    if (hasEnvCredentials) {
         console.log('Loading config from environment variables');
 
         if (process.env.SKYFLOW_API_KEY) {
             config.credentials = {
                 apiKey: process.env.SKYFLOW_API_KEY
             };
-        } else {
+        } else if (process.env.SKYFLOW_CLIENT_ID) {
             config.credentials = {
                 clientID: process.env.SKYFLOW_CLIENT_ID,
                 clientName: process.env.SKYFLOW_CLIENT_NAME,
                 tokenURI: process.env.SKYFLOW_TOKEN_URI,
                 keyID: process.env.SKYFLOW_KEY_ID,
                 privateKey: process.env.SKYFLOW_PRIVATE_KEY
+            };
+        } else {
+            config.credentials = {
+                token: process.env.SKYFLOW_BEARER_TOKEN
             };
         }
 
@@ -65,6 +74,11 @@ function loadConfig() {
         if (!config.credentials.apiKey.startsWith('sky-')) {
             console.warn('Warning: API key does not start with "sky-"');
         }
+    } else if (config.credentials.token) {
+        // Bearer token authentication is supported by the Skyflow SDK.
+        if (typeof config.credentials.token !== 'string' || config.credentials.token.trim().length === 0) {
+            throw new Error('Missing required bearer token in SKYFLOW_BEARER_TOKEN');
+        }
     } else {
         const requiredJwtFields = ['clientID', 'clientName', 'tokenURI', 'keyID', 'privateKey'];
         for (const field of requiredJwtFields) {
@@ -75,7 +89,7 @@ function loadConfig() {
     }
 
     console.log('Configuration loaded successfully', {
-        authType: config.credentials.apiKey ? 'API_KEY' : 'JWT'
+        authType: config.credentials.apiKey ? 'API_KEY' : config.credentials.token ? 'TOKEN' : 'JWT'
     });
 
     return config;

@@ -15,6 +15,7 @@ const config = require('./config');
 const { SkyflowError } = require('skyflow-node');
 const snowflakeHandler = require('./snowflake-handler');
 const { getHeader } = require('./utils/headers');
+const { parseRequestBody } = require('./utils/body');
 
 // Singleton client instance (reused across warm invocations)
 let skyflowClient;
@@ -23,19 +24,22 @@ let skyflowClient;
  * Main Lambda handler
  * Routes requests to appropriate Skyflow operations or Snowflake handler
  */
-exports.handler = async (event, context) => {
+exports.handler = async (event, awsContext) => {
     console.log('Request:', {
-        requestId: context.requestId,
-        functionName: context.functionName,
+        requestId: awsContext?.awsRequestId ?? awsContext?.requestId,
+        functionName: awsContext?.functionName,
         path: event.path || event.rawPath,
-        remainingTimeMs: context.getRemainingTimeInMillis()
+        remainingTimeMs: awsContext?.getRemainingTimeInMillis?.(),
+        eventBodyType: typeof event.body,
+        eventBodyLength: typeof event.body === 'string' || Buffer.isBuffer(event.body) ? event.body.length : 0,
+        isBase64Encoded: event.isBase64Encoded === true
     });
 
     try {
         // Route to Snowflake handler if path matches
         const path = event.path || event.rawPath || '';
         if (path.includes('/processSnowflake')) {
-            return await snowflakeHandler.handler(event, context);
+            return await snowflakeHandler.handler(event, awsContext);
         }
         // Initialize client on first invocation (singleton pattern)
         if (!skyflowClient) {
@@ -43,7 +47,7 @@ exports.handler = async (event, context) => {
         }
 
         // Parse request body
-        const body = JSON.parse(event.body || '{}');
+        const body = parseRequestBody(event);
 
         // Extract configuration from headers (case-insensitive)
         const headers = event.headers || {};
